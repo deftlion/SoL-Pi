@@ -56,7 +56,8 @@ function packedFiles(): string[] {
 		shell: process.platform === "win32",
 	});
 	if (result.status !== 0) throw new Error(result.stderr || result.stdout);
-	const report = JSON.parse(result.stdout) as PackReport[];
+	const parsed = JSON.parse(result.stdout) as PackReport[] | Record<string, PackReport>;
+	const report = Array.isArray(parsed) ? parsed : Object.values(parsed);
 	return report[0]?.files.map((file) => file.path) ?? [];
 }
 
