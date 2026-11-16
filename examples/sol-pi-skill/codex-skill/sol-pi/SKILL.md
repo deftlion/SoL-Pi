@@ -1,11 +1,12 @@
 ---
+
 name: sol-pi
 description: >-
-  Delegate a coding task to SoL-Pi, a token-efficient Pi extension, with all
-  four mechanisms enabled (Action Fusion, ObservationPack, Evidence-Preserving
-  Reducer, Online Context Compact), and get back its answer, session and cost.
-  Use when the user asks to run something "with SoL-Pi" / "用 sol-pi 跑", wants a
-  cheaper long-running worker, or wants to compare SoL-Pi against this agent.
+Delegate a coding task to SoL-Pi, a token-efficient Pi extension, with all
+four mechanisms enabled (Action Fusion, ObservationPack, Evidence-Preserving
+Reducer, Online Context Compact), and get back its answer, session and cost.
+Use when the user asks to run something "with SoL-Pi" / "用 sol-pi 跑", wants a
+cheaper long-running worker, or wants to compare SoL-Pi against this agent.
 ---
 
 # SoL-Pi

@@ -1,9 +1,10 @@
 ---
+
 name: sol-pi
 description: Run the given prompt with SoL-Pi instead of Claude, passing this Claude Code session as prefix context
 argument-hint: "[-m provider/model] [-t low|medium|high|xhigh] <task>"
 disable-model-invocation: true
-allowed-tools: Bash(sol-pi-run:*) Bash(sol-pi-context:*) Bash(git diff:*) Bash(git status:*) Write
+allowed-tools: Bash(sol-pi-run:_) Bash(sol-pi-context:_) Bash(git diff:_) Bash(git status:_) Write
 ---
 
 # Hand this prompt to SoL-Pi
@@ -50,5 +51,5 @@ SoL-Pi status: !`sol-pi-run doctor --json | python3 -c "import json,sys; d=json.
    - what files it changed,
    - the first `[sol-pi]` summary line (status, model, time, cost; cost uses the prices in the
      user's Pi model definitions and is $0 for a model without prices) and the run id.
-   If the run failed, show the error line and suggest rerunning; provider 429/503 errors are
-   transient. Do not silently redo the task yourself unless the user asks.
+     If the run failed, show the error line and suggest rerunning; provider 429/503 errors are
+     transient. Do not silently redo the task yourself unless the user asks.
