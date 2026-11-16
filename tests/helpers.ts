@@ -2,15 +2,25 @@
  * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: MIT
  */
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { ExtensionAPI, ExtensionContext, SessionEntry, Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { Component } from "@earendil-works/pi-tui";
+
 import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+	SessionEntry,
+	Theme,
+	ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
+import type { Component } from "@earendil-works/pi-tui";
 
-type Handler = (event: unknown, context: ExtensionContext) => unknown | Promise<unknown>;
+type Handler = (
+	event: unknown,
+	context: ExtensionContext,
+) => unknown | Promise<unknown>;
 
 export const plainTheme = {
 	fg: (_color: string, text: string) => text,
@@ -37,7 +47,11 @@ export class FakeSessionManager {
 	leafId: string | null;
 	private nextId = 1;
 
-	constructor(entries: SessionEntry[] = [], sessionId = "session-a", sessionDir = tmpdir()) {
+	constructor(
+		entries: SessionEntry[] = [],
+		sessionId = "session-a",
+		sessionDir = tmpdir(),
+	) {
 		this.entries = entries;
 		this.sessionId = sessionId;
 		this.sessionFile = join(sessionDir, `${sessionId}.jsonl`);
@@ -99,7 +113,9 @@ export class FakeSessionManager {
 	/** Custom-entry payloads appended so far, in order. */
 	customEntryData(): Record<string, unknown>[] {
 		return this.entries.flatMap((entry) =>
-			entry.type === "custom" && typeof entry.data === "object" && entry.data !== null
+			entry.type === "custom" &&
+			typeof entry.data === "object" &&
+			entry.data !== null
 				? [entry.data as Record<string, unknown>]
 				: [],
 		);
@@ -110,17 +126,32 @@ function isSystemMessage(message: AgentMessage): boolean {
 	return (message as { role: string }).role === "system";
 }
 
-function sameMessages(left: readonly AgentMessage[], right: readonly AgentMessage[]): boolean {
-	return left.length === right.length && left.every((message, index) => message === right[index]);
+function sameMessages(
+	left: readonly AgentMessage[],
+	right: readonly AgentMessage[],
+): boolean {
+	return (
+		left.length === right.length &&
+		left.every((message, index) => message === right[index])
+	);
 }
 
 /** Simplified `getCurrentSystemMessage`: every system message folded into one. */
-function collapseSystemMessages(messages: readonly AgentMessage[]): AgentMessage | undefined {
-	const system = messages.filter(isSystemMessage) as unknown as Array<{ content: unknown; timestamp: number }>;
+function collapseSystemMessages(
+	messages: readonly AgentMessage[],
+): AgentMessage | undefined {
+	const system = messages.filter(isSystemMessage) as unknown as Array<{
+		content: unknown;
+		timestamp: number;
+	}>;
 	if (system.length === 0) return undefined;
 	return {
 		role: "system",
-		content: system.map((message) => (typeof message.content === "string" ? message.content : "")).join("\n\n"),
+		content: system
+			.map((message) =>
+				typeof message.content === "string" ? message.content : "",
+			)
+			.join("\n\n"),
 		timestamp: system[0]!.timestamp,
 		collapsedFrom: system.length,
 	} as unknown as AgentMessage;
@@ -134,8 +165,15 @@ export class FakePi {
 	readonly handlers = new Map<string, Handler[]>();
 	readonly registeredTools: ToolDefinition[] = [];
 	readonly sentMessages: Array<{
-		message: { customType: string; content: string; display: boolean; details?: unknown };
-		options: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" } | undefined;
+		message: {
+			customType: string;
+			content: string;
+			display: boolean;
+			details?: unknown;
+		};
+		options:
+			| { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" }
+			| undefined;
 	}> = [];
 	readonly sessionManager: FakeSessionManager;
 
@@ -158,8 +196,16 @@ export class FakePi {
 	}
 
 	sendMessage(
-		message: { customType: string; content: string; display: boolean; details?: unknown },
-		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+		message: {
+			customType: string;
+			content: string;
+			display: boolean;
+			details?: unknown;
+		},
+		options?: {
+			triggerTurn?: boolean;
+			deliverAs?: "steer" | "followUp" | "nextTurn";
+		},
 	): void {
 		this.sentMessages.push({ message, options });
 	}
@@ -169,13 +215,19 @@ export class FakePi {
 	}
 
 	tool(name: string): ToolDefinition {
-		const tool = this.registeredTools.find((candidate) => candidate.name === name);
+		const tool = this.registeredTools.find(
+			(candidate) => candidate.name === name,
+		);
 		if (!tool) throw new Error(`tool not registered: ${name}`);
 		return tool;
 	}
 
 	/** Run every handler for one event and return the last defined result. */
-	async emit(eventName: string, event: unknown, context: ExtensionContext): Promise<unknown> {
+	async emit(
+		eventName: string,
+		event: unknown,
+		context: ExtensionContext,
+	): Promise<unknown> {
 		let result: unknown;
 		for (const handler of this.handlers.get(eventName) ?? []) {
 			const current = await handler(event, context);
@@ -191,15 +243,21 @@ export class FakePi {
 	 * handler keeps every message object. Otherwise they collapse into one
 	 * leading system message, as `restoreSystemMessages` does.
 	 */
-	async emitContext(messages: readonly AgentMessage[], context: ExtensionContext): Promise<AgentMessage[]> {
+	async emitContext(
+		messages: readonly AgentMessage[],
+		context: ExtensionContext,
+	): Promise<AgentMessage[]> {
 		let current = structuredClone(messages) as AgentMessage[];
 		for (const handler of this.handlers.get("context") ?? []) {
 			const visible = current.filter((message) => !isSystemMessage(message));
 			const snapshot = visible.slice();
-			const result = (await handler({ type: "context", messages: visible }, context)) as
-				| { messages?: AgentMessage[] }
-				| undefined;
-			const returned = result?.messages ?? (sameMessages(visible, snapshot) ? undefined : visible);
+			const result = (await handler(
+				{ type: "context", messages: visible },
+				context,
+			)) as { messages?: AgentMessage[] } | undefined;
+			const returned =
+				result?.messages ??
+				(sameMessages(visible, snapshot) ? undefined : visible);
 			if (!returned || sameMessages(returned, snapshot)) continue;
 			const head = collapseSystemMessages(current);
 			current = head ? [head, ...returned] : returned;
@@ -227,7 +285,10 @@ export function fakeToolContext(
 		tools: [],
 		executeTool: async (name: string, args: unknown) => ({
 			toolCall: { type: "toolCall", id: "fake/1", name, arguments: args ?? {} },
-			result: { content: [{ type: "text", text: `Tool "${name}" is not available` }], details: undefined },
+			result: {
+				content: [{ type: "text", text: `Tool "${name}" is not available` }],
+				details: undefined,
+			},
 			isError: true,
 		}),
 		...overrides,
@@ -239,7 +300,9 @@ export function fakeContext(
 	overrides: Partial<ExtensionContext> = {},
 ): ExtensionContext {
 	const manager =
-		typeof sessionManager === "string" ? new FakeSessionManager([], "session-a", sessionManager) : sessionManager;
+		typeof sessionManager === "string"
+			? new FakeSessionManager([], "session-a", sessionManager)
+			: sessionManager;
 	return {
 		mode: "json",
 		hasUI: false,
@@ -267,9 +330,17 @@ export function fakeContext(
  * `dist/cli.js` on Pi 0.84.2.
  */
 export function piCliPath(): string {
-	const root = dirname(dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"))));
-	const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { bin?: string | Record<string, string> };
-	const bin = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.pi;
-	if (!bin) throw new Error("@earendil-works/pi-coding-agent declares no pi bin");
+	const root = dirname(
+		dirname(
+			fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent")),
+		),
+	);
+	const manifest = JSON.parse(
+		readFileSync(join(root, "package.json"), "utf8"),
+	) as { bin?: string | Record<string, string> };
+	const bin =
+		typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.pi;
+	if (!bin)
+		throw new Error("@earendil-works/pi-coding-agent declares no pi bin");
 	return join(root, bin);
 }

@@ -29,7 +29,10 @@ export function archiveRoot(config: ReducerConfig): string {
  * object with the same name but different bytes is an integrity failure, not a
  * cache hit.
  */
-export async function archiveBody(root: string, body: string): Promise<ArchiveObject> {
+export async function archiveBody(
+	root: string,
+	body: string,
+): Promise<ArchiveObject> {
 	const hash = sha256(body);
 	const objectDir = join(root, "objects", hash.slice(0, 2));
 	const path = join(objectDir, `${hash}.txt`);

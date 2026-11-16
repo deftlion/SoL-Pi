@@ -13,8 +13,13 @@ function rootFile(name: string): string {
 
 /** The tested Pi versions declared by the compatibility check, oldest first. */
 function testedPiVersions(): string[] {
-	const declaration = rootFile("scripts/check-pi-compat.mjs").match(/const TESTED_PI_VERSIONS = \[([^\]]*)\]/u);
-	if (!declaration?.[1]) throw new Error("TESTED_PI_VERSIONS not found in scripts/check-pi-compat.mjs");
+	const declaration = rootFile("scripts/check-pi-compat.mjs").match(
+		/const TESTED_PI_VERSIONS = \[([^\]]*)\]/u,
+	);
+	if (!declaration?.[1])
+		throw new Error(
+			"TESTED_PI_VERSIONS not found in scripts/check-pi-compat.mjs",
+		);
 	return [...declaration[1].matchAll(/"([^"]+)"/gu)]
 		.map((match) => match[1]!)
 		.sort((left, right) => left.localeCompare(right, "en", { numeric: true }));
@@ -35,7 +40,9 @@ describe("agent installation instructions", () => {
 
 	it("keeps the README pointed at the managed installation and configuration profile", () => {
 		const readme = rootFile("README.md");
-		expect(readme).toContain("[agent installation and configuration protocol](agents-install.md)");
+		expect(readme).toContain(
+			"[agent installation and configuration protocol](agents-install.md)",
+		);
 		expect(readme).toContain("check-sol-pi-config.mjs --require-all-enabled");
 	});
 
@@ -71,13 +78,21 @@ describe("agent installation instructions", () => {
 		const latest = versions.at(-1);
 		expect(versions.length).toBeGreaterThan(1);
 		// The development dependency is the newest tested Pi.
-		const manifest = JSON.parse(rootFile("package.json")) as { devDependencies: Record<string, string> };
-		expect(manifest.devDependencies["@earendil-works/pi-coding-agent"]).toBe(latest);
+		const manifest = JSON.parse(rootFile("package.json")) as {
+			devDependencies: Record<string, string>;
+		};
+		expect(manifest.devDependencies["@earendil-works/pi-coding-agent"]).toBe(
+			latest,
+		);
 
 		const guide = rootFile("agents-install.md");
 		const readme = rootFile("README.md");
-		expect(guide).toContain(`npm install --global --ignore-scripts @earendil-works/pi-coding-agent@${latest}`);
-		expect(readme).toContain(`npm install --global @earendil-works/pi-coding-agent@${latest}`);
+		expect(guide).toContain(
+			`npm install --global --ignore-scripts @earendil-works/pi-coding-agent@${latest}`,
+		);
+		expect(readme).toContain(
+			`npm install --global @earendil-works/pi-coding-agent@${latest}`,
+		);
 		for (const version of versions) {
 			expect(guide).toContain(`@earendil-works/pi-coding-agent@${version}`);
 			expect(readme).toContain(version);
@@ -97,7 +112,9 @@ describe("agent installation instructions", () => {
 			"Evidence-Preserving Reducer",
 			"Online Context Compact",
 		]) {
-			expect(compatibility).toMatch(new RegExp(`^\\| ${mechanism} \\|`, "mu"));
+			expect(compatibility).toMatch(
+				new RegExp(`^\\| ${mechanism}\\s+\\|`, "mu"),
+			);
 		}
 		expect(rootFile("README.md")).toContain("(docs/compatibility.md#codemode)");
 	});

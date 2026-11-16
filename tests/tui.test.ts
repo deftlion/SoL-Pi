@@ -42,21 +42,34 @@ describe("SoL-Pi TUI savings presentation", () => {
 			new Text("original edit renderer", 0, 0),
 		);
 
-		expect(component.render(100).map((line) => line.trimEnd()).join("\n")).toBe(
+		expect(
+			component
+				.render(100)
+				.map((line) => line.trimEnd())
+				.join("\n"),
+		).toBe(
 			"⚡ SoL-Pi · Action Fusion\nMoney saved · 1 model round-trip avoided\noriginal edit renderer",
 		);
 	});
 
 	it("formats token and byte savings without inventing a currency amount", () => {
-		expect(formatSavingsCount(12_345, "context tokens avoided")).toBe("12,345 context tokens avoided");
-		expect(formatSavingsBytes(78_200)).toBe("76.4 KiB removed from future prompts");
+		expect(formatSavingsCount(12_345, "context tokens avoided")).toBe(
+			"12,345 context tokens avoided",
+		);
+		expect(formatSavingsBytes(78_200)).toBe(
+			"76.4 KiB removed from future prompts",
+		);
 	});
 
 	it("shows and clears a TUI-only notification and footer status", () => {
 		vi.useFakeTimers();
 		const { context, notify, setStatus } = uiContext("tui");
 
-		showSolPiSavings(context, "Online Context Compact", "84,026 context tokens removed");
+		showSolPiSavings(
+			context,
+			"Online Context Compact",
+			"84,026 context tokens removed",
+		);
 
 		expect(notify).toHaveBeenCalledWith(
 			"⚡ SoL-Pi · Online Context Compact\nMoney saved · 84,026 context tokens removed",
@@ -78,12 +91,15 @@ describe("SoL-Pi TUI savings presentation", () => {
 		expect(isNestedToolCallId("call-1:then_run")).toBe(false);
 	});
 
-	it.each(["rpc", "json", "print"] as const)("does not emit presentation in %s mode", (mode) => {
-		const { context, notify, setStatus } = uiContext(mode);
+	it.each(["rpc", "json", "print"] as const)(
+		"does not emit presentation in %s mode",
+		(mode) => {
+			const { context, notify, setStatus } = uiContext(mode);
 
-		showSolPiSavings(context, "Action Fusion", "1 model round-trip avoided");
+			showSolPiSavings(context, "Action Fusion", "1 model round-trip avoided");
 
-		expect(notify).not.toHaveBeenCalled();
-		expect(setStatus).not.toHaveBeenCalled();
-	});
+			expect(notify).not.toHaveBeenCalled();
+			expect(setStatus).not.toHaveBeenCalled();
+		},
+	);
 });

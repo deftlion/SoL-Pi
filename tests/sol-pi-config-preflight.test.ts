@@ -69,7 +69,9 @@ describe("SoL-Pi configuration preflight", () => {
 		const { cacheWriteReadRatio: _ratio, ...withoutRatio } = ALL_ENABLED;
 		const result = run(writeConfig(withoutRatio));
 		expect(result.status).toBe(0);
-		expect(JSON.parse(result.stdout).effective_config.cacheWriteReadRatio).toBe(12.5);
+		expect(JSON.parse(result.stdout).effective_config.cacheWriteReadRatio).toBe(
+			12.5,
+		);
 	});
 
 	it("applies default EPR reducer provider/model when those fields are omitted", () => {
@@ -102,11 +104,16 @@ describe("SoL-Pi configuration preflight", () => {
 		});
 	});
 
-	it.each([null, "12.5", -1])("rejects an invalid ratio: %j", (cacheWriteReadRatio) => {
-		const result = run(writeConfig({ ...ALL_ENABLED, cacheWriteReadRatio }));
-		expect(result.status).toBe(1);
-		expect(result.stderr).toContain("cacheWriteReadRatio must be a finite non-negative number");
-	});
+	it.each([null, "12.5", -1])(
+		"rejects an invalid ratio: %j",
+		(cacheWriteReadRatio) => {
+			const result = run(writeConfig({ ...ALL_ENABLED, cacheWriteReadRatio }));
+			expect(result.status).toBe(1);
+			expect(result.stderr).toContain(
+				"cacheWriteReadRatio must be a finite non-negative number",
+			);
+		},
+	);
 
 	it.each([
 		["evidencePreservingReducerProvider", ""],
@@ -122,7 +129,12 @@ describe("SoL-Pi configuration preflight", () => {
 	it("rejects a disabled or missing mechanism", () => {
 		for (const config of [
 			{ ...ALL_ENABLED, onlineContextCompact: false },
-			{ version: 1, actionFusion: true, observationPack: true, evidencePreservingReducer: true },
+			{
+				version: 1,
+				actionFusion: true,
+				observationPack: true,
+				evidencePreservingReducer: true,
+			},
 		]) {
 			const result = run(writeConfig(config));
 			expect(result.status).toBe(1);

@@ -6,14 +6,18 @@
 import { rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { SessionManager, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+	type ExtensionContext,
+	SessionManager,
+} from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
 import { runtimeRoot } from "../src/sol-pi/runtime-paths.ts";
 
 const temporaryRoots = new Set<string>();
 
 afterEach(() => {
-	for (const root of temporaryRoots) rmSync(root, { recursive: true, force: true });
+	for (const root of temporaryRoots)
+		rmSync(root, { recursive: true, force: true });
 	temporaryRoots.clear();
 });
 
@@ -29,19 +33,26 @@ function context(sessionDir: string, sessionId: string): ExtensionContext {
 describe("SoL-Pi runtime root", () => {
 	it("gives each Pi session its own directory", () => {
 		const sessionDir = join("sessions", "project-a");
-		expect(runtimeRoot(context(sessionDir, "session-a"))).toBe(join(sessionDir, "sol-pi", "session-a"));
-		expect(runtimeRoot(context(sessionDir, "session-b"))).toBe(join(sessionDir, "sol-pi", "session-b"));
+		expect(runtimeRoot(context(sessionDir, "session-a"))).toBe(
+			join(sessionDir, "sol-pi", "session-a"),
+		);
+		expect(runtimeRoot(context(sessionDir, "session-b"))).toBe(
+			join(sessionDir, "sol-pi", "session-b"),
+		);
 	});
 
 	it("keeps one private temporary directory per in-memory session across contexts", () => {
 		const manager = SessionManager.inMemory();
 		expect(manager.getSessionDir()).toBe("");
 		expect(manager.getSessionFile()).toBeUndefined();
-		const root = runtimeRoot(context(manager.getSessionDir(), manager.getSessionId()));
+		const root = runtimeRoot(
+			context(manager.getSessionDir(), manager.getSessionId()),
+		);
 		temporaryRoots.add(root);
 		expect(dirname(root)).toBe(tmpdir());
 		expect(statSync(root).isDirectory()).toBe(true);
-		if (process.platform !== "win32") expect(statSync(root).mode & 0o777).toBe(0o700);
+		if (process.platform !== "win32")
+			expect(statSync(root).mode & 0o777).toBe(0o700);
 		expect(runtimeRoot(context("", manager.getSessionId()))).toBe(root);
 
 		manager.newSession();
@@ -54,7 +65,9 @@ describe("SoL-Pi runtime root", () => {
 	it("isolates concurrent in-memory workers in the same working directory", () => {
 		const workers = [SessionManager.inMemory(), SessionManager.inMemory()];
 		const roots = workers.map((worker) => {
-			const root = runtimeRoot(context(worker.getSessionDir(), worker.getSessionId()));
+			const root = runtimeRoot(
+				context(worker.getSessionDir(), worker.getSessionId()),
+			);
 			temporaryRoots.add(root);
 			return root;
 		});
@@ -64,8 +77,12 @@ describe("SoL-Pi runtime root", () => {
 	it.each(["", ".", "..", "../escape", "nested/session", "nested\\session"])(
 		"rejects unsafe session id %j",
 		(sessionId) => {
-			expect(() => runtimeRoot(context("sessions", sessionId))).toThrow("safe Pi session id");
-			expect(() => runtimeRoot(context("", sessionId))).toThrow("safe Pi session id");
+			expect(() => runtimeRoot(context("sessions", sessionId))).toThrow(
+				"safe Pi session id",
+			);
+			expect(() => runtimeRoot(context("", sessionId))).toThrow(
+				"safe Pi session id",
+			);
 		},
 	);
 });

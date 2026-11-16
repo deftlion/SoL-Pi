@@ -41,8 +41,16 @@ const FEATURE_KEYS = [
 	"evidencePreservingReducer",
 	"onlineContextCompact",
 ] as const;
-const STRING_KEYS = ["evidencePreservingReducerModel", "evidencePreservingReducerProvider"] as const;
-const CONFIG_KEYS = new Set<string>(["version", ...FEATURE_KEYS, ...STRING_KEYS, "cacheWriteReadRatio"]);
+const STRING_KEYS = [
+	"evidencePreservingReducerModel",
+	"evidencePreservingReducerProvider",
+] as const;
+const CONFIG_KEYS = new Set<string>([
+	"version",
+	...FEATURE_KEYS,
+	...STRING_KEYS,
+	"cacheWriteReadRatio",
+]);
 
 export function findConfigPath(
 	cwd = process.cwd(),
@@ -80,9 +88,11 @@ export function loadSolPiConfig(
 
 	const record = parsed as Record<string, unknown>;
 	for (const key of Object.keys(record)) {
-		if (!CONFIG_KEYS.has(key)) throw new Error(`Unknown SoL-Pi config key: ${key}`);
+		if (!CONFIG_KEYS.has(key))
+			throw new Error(`Unknown SoL-Pi config key: ${key}`);
 	}
-	if (record.version !== 1) throw new Error(`SoL-Pi config version must be 1: ${path}`);
+	if (record.version !== 1)
+		throw new Error(`SoL-Pi config version must be 1: ${path}`);
 
 	for (const key of FEATURE_KEYS) {
 		if (record[key] !== undefined && typeof record[key] !== "boolean") {
@@ -97,7 +107,9 @@ export function loadSolPiConfig(
 		!Number.isFinite(cacheWriteReadRatio) ||
 		cacheWriteReadRatio < 0
 	) {
-		throw new Error(`SoL-Pi config cacheWriteReadRatio must be a finite non-negative number: ${path}`);
+		throw new Error(
+			`SoL-Pi config cacheWriteReadRatio must be a finite non-negative number: ${path}`,
+		);
 	}
 	const evidencePreservingReducerModel = stringConfigValue(
 		record,

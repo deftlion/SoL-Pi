@@ -14,8 +14,13 @@ export type SolPiTuiMechanism =
 
 const STATUS_KEY = "sol-pi-savings";
 const STATUS_DURATION_MS = 4_000;
-const INTEGER_FORMAT = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
-const statusTimers = new WeakMap<ExtensionContext["ui"], ReturnType<typeof setTimeout>>();
+const INTEGER_FORMAT = new Intl.NumberFormat("en-US", {
+	maximumFractionDigits: 0,
+});
+const statusTimers = new WeakMap<
+	ExtensionContext["ui"],
+	ReturnType<typeof setTimeout>
+>();
 
 export function formatSavingsCount(value: number, unit: string): string {
 	const count = Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
@@ -31,7 +36,8 @@ export function formatSavingsBytes(value: number): string {
 	if (bytes >= 1024 * 1024) {
 		return `${compactDecimal(bytes / (1024 * 1024))} MiB removed from future prompts`;
 	}
-	if (bytes >= 1024) return `${compactDecimal(bytes / 1024)} KiB removed from future prompts`;
+	if (bytes >= 1024)
+		return `${compactDecimal(bytes / 1024)} KiB removed from future prompts`;
 	return `${INTEGER_FORMAT.format(bytes)} B removed from future prompts`;
 }
 
@@ -44,7 +50,9 @@ export function renderSolPiTool(
 	const container = new Container();
 	const title = `${theme.fg("warning", "⚡")} ${theme.fg("accent", theme.bold(`SoL-Pi · ${mechanism}`))}`;
 	container.addChild(new Text(title, 0, 0));
-	container.addChild(new Text(theme.fg("success", `Money saved · ${saving}`), 0, 0));
+	container.addChild(
+		new Text(theme.fg("success", `Money saved · ${saving}`), 0, 0),
+	);
 	if (base) container.addChild(base);
 	return container;
 }

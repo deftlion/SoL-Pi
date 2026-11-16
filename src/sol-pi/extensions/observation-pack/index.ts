@@ -25,11 +25,19 @@
  */
 
 import { join } from "node:path";
-import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+	ExtensionFactory,
+} from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { runtimeRoot } from "../../runtime-paths.ts";
-import { formatSavingsCount, renderSolPiTool, showSolPiSavings } from "../../tui.ts";
+import {
+	formatSavingsCount,
+	renderSolPiTool,
+	showSolPiSavings,
+} from "../../tui.ts";
 import { createLedger, type Ledger } from "./ledger.ts";
 import {
 	countLines,
@@ -72,21 +80,34 @@ export function createObservationPackExtension(): ExtensionFactory {
 		pi.registerTool({
 			name: "obs_recall",
 			label: "Recall Observation",
-			description: "Read a stored large tool result by observation id and byte offset.",
-			promptSnippet: "Recall a paged excerpt from a previously replaced large tool result",
+			description:
+				"Read a stored large tool result by observation id and byte offset.",
+			promptSnippet:
+				"Recall a paged excerpt from a previously replaced large tool result",
 			renderShell: "self",
 			parameters: Type.Object({
 				id: Type.String({ description: "Observation id from a placeholder" }),
-				offset: Type.Optional(Type.Integer({ minimum: 0, description: "Byte offset, default 0" })),
+				offset: Type.Optional(
+					Type.Integer({ minimum: 0, description: "Byte offset, default 0" }),
+				),
 			}),
 			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-				if (!isObservationId(params.id)) throw new Error(`Unknown observation id: ${params.id}`);
+				if (!isObservationId(params.id))
+					throw new Error(`Unknown observation id: ${params.id}`);
 				const offset = params.offset ?? 0;
 				let chunk: RecallChunk;
 				try {
-					chunk = await readRecallChunk(observationPath(runtimeRoot(ctx), params.id), offset, RECALL_LIMITS);
+					chunk = await readRecallChunk(
+						observationPath(runtimeRoot(ctx), params.id),
+						offset,
+						RECALL_LIMITS,
+					);
 				} catch (error) {
-					if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+					if (
+						error instanceof Error &&
+						"code" in error &&
+						error.code === "ENOENT"
+					) {
 						throw new Error(`Unknown observation id: ${params.id}`);
 					}
 					throw error;
@@ -96,7 +117,10 @@ export function createObservationPackExtension(): ExtensionFactory {
 					`[chunk_bytes=${chunk.bytes} chunk_lines=${chunk.lines}; use next_offset to continue]`,
 				].join("\n");
 				const content = `${header}\n${chunk.text}`;
-				if (Buffer.byteLength(content, "utf8") > RECALL_MAX_BYTES || countLines(content) > RECALL_MAX_LINES) {
+				if (
+					Buffer.byteLength(content, "utf8") > RECALL_MAX_BYTES ||
+					countLines(content) > RECALL_MAX_LINES
+				) {
 					throw new Error("Recall output exceeded its hard limit");
 				}
 				await ledgerFor(ctx)({
@@ -122,11 +146,22 @@ export function createObservationPackExtension(): ExtensionFactory {
 			},
 			renderCall(params, theme) {
 				const offset = params.offset ?? 0;
-				const base = new Text(theme.fg("dim", `Recall ${params.id} from byte ${offset}`), 0, 0);
-				return renderSolPiTool(theme, "Observation Pack", "full observation replay avoided", base);
+				const base = new Text(
+					theme.fg("dim", `Recall ${params.id} from byte ${offset}`),
+					0,
+					0,
+				);
+				return renderSolPiTool(
+					theme,
+					"Observation Pack",
+					"full observation replay avoided",
+					base,
+				);
 			},
 			renderResult(result, { isPartial }, theme) {
-				const details = result.details as { bytes?: number; lines?: number } | undefined;
+				const details = result.details as
+					| { bytes?: number; lines?: number }
+					| undefined;
 				const base = new Text(
 					theme.fg(
 						isPartial ? "warning" : "dim",
@@ -137,7 +172,12 @@ export function createObservationPackExtension(): ExtensionFactory {
 					0,
 					0,
 				);
-				return renderSolPiTool(theme, "Observation Pack", "full observation replay avoided", base);
+				return renderSolPiTool(
+					theme,
+					"Observation Pack",
+					"full observation replay avoided",
+					base,
+				);
 			},
 		});
 
@@ -164,7 +204,8 @@ export function createObservationPackExtension(): ExtensionFactory {
 					await ensureStored(observation);
 
 					const sendCountKey = `${root}\0${observation.id}`;
-					const previousSends = sentCounts.get(sendCountKey) ?? priorAssistantCounts[index] ?? 0;
+					const previousSends =
+						sentCounts.get(sendCountKey) ?? priorAssistantCounts[index] ?? 0;
 					if (previousSends < FULL_SENDS) {
 						await ledgerFor(ctx)({
 							event: "full",
@@ -182,7 +223,10 @@ export function createObservationPackExtension(): ExtensionFactory {
 
 					const placeholder = placeholderFor(observation);
 					const placeholderTokens = estimateTokens(placeholder);
-					const removedTokens = Math.max(0, observation.tokens - placeholderTokens);
+					const removedTokens = Math.max(
+						0,
+						observation.tokens - placeholderTokens,
+					);
 					await ledgerFor(ctx)({
 						event: "placeholder",
 						id: observation.id,
@@ -209,7 +253,9 @@ export function createObservationPackExtension(): ExtensionFactory {
 				} catch (error) {
 					// Fail open: a packing failure must never cost the agent its observation.
 					const reason = error instanceof Error ? error.message : String(error);
-					console.error(`[observationpack] fail-open for tool result: ${reason}`);
+					console.error(
+						`[observationpack] fail-open for tool result: ${reason}`,
+					);
 				}
 			}
 		});

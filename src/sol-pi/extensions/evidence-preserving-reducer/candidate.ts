@@ -28,7 +28,9 @@ export interface ReducibleToolResult {
 
 function textContent(event: ToolResultEvent): string {
 	return event.content
-		.filter((item): item is { type: "text"; text: string } => item.type === "text")
+		.filter(
+			(item): item is { type: "text"; text: string } => item.type === "text",
+		)
 		.map((item) => item.text)
 		.join("\n");
 }
@@ -41,8 +43,14 @@ export function detailsFullOutputPath(details: unknown): string | undefined {
 async function safePiBashTempPath(path: string | undefined): Promise<boolean> {
 	if (!path || !/^pi-bash-[^/\\]+\.log$/u.test(basename(path))) return false;
 	try {
-		const [candidate, root, status] = await Promise.all([realpath(path), realpath(tmpdir()), lstat(path)]);
-		return status.isFile() && !status.isSymbolicLink() && dirname(candidate) === root;
+		const [candidate, root, status] = await Promise.all([
+			realpath(path),
+			realpath(tmpdir()),
+			lstat(path),
+		]);
+		return (
+			status.isFile() && !status.isSymbolicLink() && dirname(candidate) === root
+		);
 	} catch {
 		return false;
 	}
@@ -60,7 +68,10 @@ function inlineExitFailed(inline: string): boolean | undefined {
 
 /** `structuredContent.exit_code` of a pi >= 0.99 bash result; absent on older pi. */
 function structuredExitCode(event: ToolResultEvent): number | undefined {
-	const value = recordValue((event as { structuredContent?: unknown }).structuredContent, "exit_code");
+	const value = recordValue(
+		(event as { structuredContent?: unknown }).structuredContent,
+		"exit_code",
+	);
 	return typeof value === "number" ? value : undefined;
 }
 
@@ -68,7 +79,10 @@ function structuredExitCode(event: ToolResultEvent): number | undefined {
  * Prefer the untruncated file pi wrote for a large bash result, so evidence is
  * checked against the exact bytes the command produced rather than a preview.
  */
-async function exactBodyFromInline(inline: string, details: unknown): Promise<string> {
+async function exactBodyFromInline(
+	inline: string,
+	details: unknown,
+): Promise<string> {
 	const detailsPath = detailsFullOutputPath(details);
 	const inlineMatch = inline.match(/Full output:\s*([^\]\r\n]+)/u);
 	const candidate = detailsPath ?? inlineMatch?.[1]?.trim();
@@ -88,16 +102,20 @@ function firstIndex(left: number, right: number): number {
  * Identify the log inside a tool result: either a plain bash result, or the
  * command output appended by a fused `edit`/`write` call.
  */
-export async function reducibleToolResult(event: ToolResultEvent): Promise<ReducibleToolResult | undefined> {
+export async function reducibleToolResult(
+	event: ToolResultEvent,
+): Promise<ReducibleToolResult | undefined> {
 	if (event.toolName === "bash") {
-		const command = typeof event.input.command === "string" ? event.input.command : "";
+		const command =
+			typeof event.input.command === "string" ? event.input.command : "";
 		if (!command) return undefined;
 		const inline = textContent(event);
 		const exitCode = structuredExitCode(event);
 		return {
 			command,
 			body: await exactBodyFromInline(inline, event.details),
-			exitFailed: exitCode !== undefined ? exitCode !== 0 : inlineExitFailed(inline),
+			exitFailed:
+				exitCode !== undefined ? exitCode !== 0 : inlineExitFailed(inline),
 			projectReceipt: (receipt) => [{ type: "text", text: receipt }],
 		};
 	}
@@ -107,16 +125,23 @@ export async function reducibleToolResult(event: ToolResultEvent): Promise<Reduc
 	if (typeof commandValue !== "string" || !commandValue) return undefined;
 	for (let index = 0; index < event.content.length; index++) {
 		const block = event.content[index];
-		if (!block || block.type !== "text") continue;
+		if (block?.type !== "text") continue;
 		// The first marker in the block is the one action-fusion wrote; the
 		// command's own output may quote either marker later on.
-		const markerIndex = firstIndex(block.text.indexOf(THEN_RUN_SUCCEEDED), block.text.indexOf(THEN_RUN_FAILED));
+		const markerIndex = firstIndex(
+			block.text.indexOf(THEN_RUN_SUCCEEDED),
+			block.text.indexOf(THEN_RUN_FAILED),
+		);
 		if (markerIndex < 0) continue;
-		const marker = block.text.startsWith(THEN_RUN_FAILED, markerIndex) ? THEN_RUN_FAILED : THEN_RUN_SUCCEEDED;
+		const marker = block.text.startsWith(THEN_RUN_FAILED, markerIndex)
+			? THEN_RUN_FAILED
+			: THEN_RUN_SUCCEEDED;
 		const suffixStart = markerIndex + marker.length;
 		const suffix = block.text.slice(suffixStart);
 		const separator = suffix.match(/^(?:\r?\n)+/u)?.[0] ?? "\n";
-		const inline = suffix.slice(separator === "\n" && !suffix.startsWith("\n") ? 0 : separator.length);
+		const inline = suffix.slice(
+			separator === "\n" && !suffix.startsWith("\n") ? 0 : separator.length,
+		);
 		return {
 			command: commandValue,
 			body: await exactBodyFromInline(inline, event.details),
@@ -125,11 +150,15 @@ export async function reducibleToolResult(event: ToolResultEvent): Promise<Reduc
 			// a passing command whose own last line reads `Command exited with code N`
 			// is only left unreduced, while a misreported failure would otherwise get
 			// a success receipt.
-			exitFailed: marker === THEN_RUN_FAILED || inlineExitFailed(inline) === true,
+			exitFailed:
+				marker === THEN_RUN_FAILED || inlineExitFailed(inline) === true,
 			projectReceipt: (receipt) =>
 				event.content.map((content, contentIndex) =>
 					contentIndex === index && content.type === "text"
-						? { ...content, text: `${content.text.slice(0, suffixStart)}${separator}${receipt}` }
+						? {
+								...content,
+								text: `${content.text.slice(0, suffixStart)}${separator}${receipt}`,
+							}
 						: content,
 				),
 		};

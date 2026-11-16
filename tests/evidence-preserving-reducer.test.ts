@@ -8,22 +8,32 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
 import type { AssistantMessage, Context, Model } from "@earendil-works/pi-ai";
-import { createBashToolDefinition, SessionManager, type ExtensionContext, type ToolResultEvent } from "@earendil-works/pi-coding-agent";
+import {
+	createBashToolDefinition,
+	type ExtensionContext,
+	SessionManager,
+	type ToolResultEvent,
+} from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { archiveBody } from "../src/sol-pi/extensions/evidence-preserving-reducer/archive.ts";
+import { detailsFullOutputPath } from "../src/sol-pi/extensions/evidence-preserving-reducer/candidate.ts";
 import {
 	createEvidencePreservingReducerExtension,
 	DIAGNOSTIC_COMMAND,
 	loadReducerConfig,
 	REDUCER_RECEIPT_SCHEMA,
 } from "../src/sol-pi/extensions/evidence-preserving-reducer/index.ts";
-import { archiveBody } from "../src/sol-pi/extensions/evidence-preserving-reducer/archive.ts";
-import { detailsFullOutputPath } from "../src/sol-pi/extensions/evidence-preserving-reducer/candidate.ts";
 import {
-	callReducer,
 	type CompatComplete,
+	callReducer,
 } from "../src/sol-pi/extensions/evidence-preserving-reducer/provider.ts";
 import { runtimeRoot } from "../src/sol-pi/runtime-paths.ts";
-import { FakePi, FakeSessionManager, fakeContext, fakeToolContext } from "./helpers.ts";
+import {
+	FakePi,
+	FakeSessionManager,
+	fakeContext,
+	fakeToolContext,
+} from "./helpers.ts";
 
 const cleanupPaths: string[] = [];
 
@@ -75,16 +85,25 @@ interface CapturedCall {
 
 afterEach(async () => {
 	vi.useRealTimers();
-	await Promise.all(cleanupPaths.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+	await Promise.all(
+		cleanupPaths
+			.splice(0)
+			.map((path) => rm(path, { recursive: true, force: true })),
+	);
 });
 
 async function storeRoot(): Promise<string> {
-	const value = await mkdtemp(join(tmpdir(), "evidence-preserving-reducer-test-"));
+	const value = await mkdtemp(
+		join(tmpdir(), "evidence-preserving-reducer-test-"),
+	);
 	cleanupPaths.push(value);
 	return value;
 }
 
-function bashEvent(body: string, overrides: Partial<ToolResultEvent> = {}): ToolResultEvent {
+function bashEvent(
+	body: string,
+	overrides: Partial<ToolResultEvent> = {},
+): ToolResultEvent {
 	return {
 		type: "tool_result",
 		toolName: "bash",
@@ -104,7 +123,11 @@ function fusedEvent(body: string, failed: boolean): ToolResultEvent {
 		type: "tool_result",
 		toolName: "write",
 		toolCallId: "write-1",
-		input: { path: "target.ts", content: "export {};\n", then_run: { command: "npm test" } },
+		input: {
+			path: "target.ts",
+			content: "export {};\n",
+			then_run: { command: "npm test" },
+		},
 		content: failed
 			? [{ type: "text", text: `${confirmation}\n\n${marker}\n\n${body}` }]
 			: [
@@ -133,17 +156,34 @@ function failureReceipt(signal: string): (input: string) => ModelReceipt {
  * since then. Pi never deletes the `pi-bash-*.log` it writes for a large
  * output, so its path is queued for cleanup.
  */
-async function realBashEvent(command: string, root: string): Promise<ToolResultEvent> {
+async function realBashEvent(
+	command: string,
+	root: string,
+): Promise<ToolResultEvent> {
 	const event = await runRealBash(command, root);
-	const text = event.content.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("\n");
-	const fullOutputPath = detailsFullOutputPath(event.details) ?? text.match(/Full output:\s*([^\]\r\n]+)/u)?.[1]?.trim();
+	const text = event.content
+		.flatMap((item) => (item.type === "text" ? [item.text] : []))
+		.join("\n");
+	const fullOutputPath =
+		detailsFullOutputPath(event.details) ??
+		text.match(/Full output:\s*([^\]\r\n]+)/u)?.[1]?.trim();
 	if (fullOutputPath) cleanupPaths.push(fullOutputPath);
 	return event;
 }
 
-async function runRealBash(command: string, root: string): Promise<ToolResultEvent> {
-	const base = { type: "tool_result", toolName: "bash", toolCallId: "real-bash", input: { command } };
-	const ctx = fakeToolContext(new FakeSessionManager([], "real-bash", root), { cwd: root });
+async function runRealBash(
+	command: string,
+	root: string,
+): Promise<ToolResultEvent> {
+	const base = {
+		type: "tool_result",
+		toolName: "bash",
+		toolCallId: "real-bash",
+		input: { command },
+	};
+	const ctx = fakeToolContext(new FakeSessionManager([], "real-bash", root), {
+		cwd: root,
+	});
 	try {
 		const result = (await createBashToolDefinition(root).execute(
 			"real-bash",
@@ -151,18 +191,30 @@ async function runRealBash(command: string, root: string): Promise<ToolResultEve
 			undefined,
 			undefined,
 			ctx,
-		)) as { content: ToolResultEvent["content"]; details: unknown; structuredContent?: unknown; isError?: boolean };
+		)) as {
+			content: ToolResultEvent["content"];
+			details: unknown;
+			structuredContent?: unknown;
+			isError?: boolean;
+		};
 		return {
 			...base,
 			content: result.content,
 			details: result.details,
-			...(result.structuredContent === undefined ? {} : { structuredContent: result.structuredContent }),
+			...(result.structuredContent === undefined
+				? {}
+				: { structuredContent: result.structuredContent }),
 			isError: result.isError === true,
 		} as ToolResultEvent;
 	} catch (error) {
 		return {
 			...base,
-			content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+			content: [
+				{
+					type: "text",
+					text: error instanceof Error ? error.message : String(error),
+				},
+			],
 			details: {},
 			isError: true,
 		} as ToolResultEvent;
@@ -171,9 +223,12 @@ async function runRealBash(command: string, root: string): Promise<ToolResultEve
 
 function contextInput(context: Context): string {
 	const message = context.messages[0];
-	if (message?.role !== "user") throw new Error("reducer request omitted its user message");
+	if (message?.role !== "user")
+		throw new Error("reducer request omitted its user message");
 	if (typeof message.content === "string") return message.content;
-	return message.content.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("\n");
+	return message.content
+		.flatMap((item) => (item.type === "text" ? [item.text] : []))
+		.join("\n");
 }
 
 function sourceHash(input: string): string {
@@ -194,7 +249,10 @@ function modelComplete(
 		const receipt = receiptFactory(input);
 		return {
 			role: "assistant",
-			content: stopReason === "error" ? [] : [{ type: "text", text: JSON.stringify(receipt) }],
+			content:
+				stopReason === "error"
+					? []
+					: [{ type: "text", text: JSON.stringify(receipt) }],
 			api: model.api,
 			provider: model.provider,
 			model: model.id,
@@ -226,7 +284,9 @@ function load(
 		model: model ?? undefined,
 		modelRegistry: {
 			find: (provider: string, modelId: string) =>
-				provider === REDUCER_MODEL.provider && modelId === REDUCER_MODEL.id ? REDUCER_MODEL : undefined,
+				provider === REDUCER_MODEL.provider && modelId === REDUCER_MODEL.id
+					? REDUCER_MODEL
+					: undefined,
 			complete,
 		} as unknown as ExtensionContext["modelRegistry"],
 		...overrides,
@@ -239,13 +299,18 @@ describe("evidence-preserving reducer", () => {
 		const sessionManager = SessionManager.inMemory();
 		const signal = "ERROR in-memory worker failed";
 		const body = `${signal}\n${"diagnostic output\n".repeat(400)}`;
-		const { context, pi } = load("", modelComplete(body, (input) => ({
-			schema: REDUCER_RECEIPT_SCHEMA,
-			source_sha256: sourceHash(input),
-			status: "failure",
-			uncertain: false,
-			evidence: [{ kind: "failure", quote: signal }],
-		})), ACTIVE_MODEL, { sessionManager });
+		const { context, pi } = load(
+			"",
+			modelComplete(body, (input) => ({
+				schema: REDUCER_RECEIPT_SCHEMA,
+				source_sha256: sourceHash(input),
+				status: "failure",
+				uncertain: false,
+				evidence: [{ kind: "failure", quote: signal }],
+			})),
+			ACTIVE_MODEL,
+			{ sessionManager },
+		);
 		cleanupPaths.push(runtimeRoot(context));
 		const result = (await pi.emit("tool_result", bashEvent(body), context)) as {
 			content: { type: string; text: string }[];
@@ -261,7 +326,9 @@ describe("evidence-preserving reducer", () => {
 
 	it("registers without an extension-specific credential", () => {
 		const pi = new FakePi();
-		expect(() => createEvidencePreservingReducerExtension()(pi.asExtensionApi())).not.toThrow();
+		expect(() =>
+			createEvidencePreservingReducerExtension()(pi.asExtensionApi()),
+		).not.toThrow();
 		expect(pi.handlers.get("tool_result")).toHaveLength(1);
 	});
 
@@ -285,14 +352,22 @@ describe("evidence-preserving reducer", () => {
 			details: Record<string, unknown>;
 		};
 
-		expect(result.content[0]?.text ?? "").toMatch(/^sol_pi_evidence_receipt_v1\n/u);
+		expect(result.content[0]?.text ?? "").toMatch(
+			/^sol_pi_evidence_receipt_v1\n/u,
+		);
 		expect(REDUCER_RECEIPT_SCHEMA).toBe("sol-pi-evidence-receipt/1");
 		expect(Object.keys(result.details)).toContain("evidencePreservingReducer");
-		expect(manager.entries.map((entry) => entry.type === "custom" && entry.customType)).toContain(
-			"sol-pi-evidence-preserving-reducer-v1",
-		);
 		expect(
-			manager.customEntryData().every((entry) => entry.schema === "sol-pi-evidence-preserving-reducer/1"),
+			manager.entries.map(
+				(entry) => entry.type === "custom" && entry.customType,
+			),
+		).toContain("sol-pi-evidence-preserving-reducer-v1");
+		expect(
+			manager
+				.customEntryData()
+				.every(
+					(entry) => entry.schema === "sol-pi-evidence-preserving-reducer/1",
+				),
 		).toBe(true);
 	});
 
@@ -318,9 +393,12 @@ describe("evidence-preserving reducer", () => {
 		vi.useFakeTimers();
 		const root = await storeRoot();
 		const fatal = "E   AssertionError: expected 4 but received 5";
-		const body = ["pytest session starts", fatal, "FAILED tests/test_math.py::test_addition", ".".repeat(6000)].join(
-			"\n",
-		);
+		const body = [
+			"pytest session starts",
+			fatal,
+			"FAILED tests/test_math.py::test_addition",
+			".".repeat(6000),
+		].join("\n");
 		let call: CapturedCall | undefined;
 		const notify = vi.fn();
 		const setStatus = vi.fn();
@@ -335,7 +413,10 @@ describe("evidence-preserving reducer", () => {
 					uncertain: false,
 					evidence: [
 						{ kind: "failure", quote: fatal },
-						{ kind: "target", quote: "FAILED tests/test_math.py::test_addition" },
+						{
+							kind: "target",
+							quote: "FAILED tests/test_math.py::test_addition",
+						},
 					],
 				}),
 				"stop",
@@ -352,9 +433,15 @@ describe("evidence-preserving reducer", () => {
 		};
 
 		expect(call?.model).toBe(REDUCER_MODEL);
-		expect(call?.context.systemPrompt).toContain("lossless test/build output reducer");
+		expect(call?.context.systemPrompt).toContain(
+			"lossless test/build output reducer",
+		);
 		expect(contextInput(call!.context)).toContain("<untrusted_log>");
-		expect(call?.options).toMatchObject({ cacheRetention: "none", maxTokens: 2_048, timeoutMs: 90_000 });
+		expect(call?.options).toMatchObject({
+			cacheRetention: "none",
+			maxTokens: 2_048,
+			timeoutMs: 90_000,
+		});
 		expect(call?.options.signal).toBeInstanceOf(AbortSignal);
 		const receipt = result.content[0]?.text ?? "";
 		expect(receipt).toMatch(/status=failure/u);
@@ -368,11 +455,19 @@ describe("evidence-preserving reducer", () => {
 		const candidate = events.find((entry) => entry.kind === "candidate");
 		expect(candidate).toBeTruthy();
 		const sourcePath = String(candidate?.sourcePath);
-		const localSourcePath = relative(join(runtimeRoot(context), "evidence-preserving-reducer"), sourcePath);
-		expect(localSourcePath.length > 0 && !localSourcePath.startsWith("..") && !isAbsolute(localSourcePath)).toBe(true);
+		const localSourcePath = relative(
+			join(runtimeRoot(context), "evidence-preserving-reducer"),
+			sourcePath,
+		);
+		expect(
+			localSourcePath.length > 0 &&
+				!localSourcePath.startsWith("..") &&
+				!isAbsolute(localSourcePath),
+		).toBe(true);
 		expect(await readFile(sourcePath, "utf8")).toBe(body);
 		// Windows filesystems do not map POSIX permission bits onto stat().mode.
-		if (process.platform !== "win32") expect((await stat(sourcePath)).mode & 0o777).toBe(0o600);
+		if (process.platform !== "win32")
+			expect((await stat(sourcePath)).mode & 0o777).toBe(0o600);
 		expect(events.filter((entry) => entry.kind === "applied")).toHaveLength(1);
 		expect(notify).toHaveBeenCalledTimes(1);
 		expect(notify.mock.calls[0]?.[0]).toMatch(
@@ -401,25 +496,38 @@ describe("evidence-preserving reducer", () => {
 			},
 		) as CompatComplete;
 		let authModel: Model<string> | undefined;
-		const context = fakeContext(new FakeSessionManager([], "fork-session", root), {
-			model: ACTIVE_MODEL,
-			modelRegistry: {
-				find: (provider: string, modelId: string) =>
-					provider === REDUCER_MODEL.provider && modelId === REDUCER_MODEL.id ? REDUCER_MODEL : undefined,
-				getApiKeyAndHeaders: async (model: Model<string>) => {
-					authModel = model;
-					return {
-					ok: true,
-					apiKey: "fork-test-key",
-					headers: { "x-test-header": "fork" },
-					env: { TEST_REGION: "test" },
-					baseUrl: "https://fork.example.invalid/v1",
-					};
-				},
-			} as unknown as ExtensionContext["modelRegistry"],
-		});
+		const context = fakeContext(
+			new FakeSessionManager([], "fork-session", root),
+			{
+				model: ACTIVE_MODEL,
+				modelRegistry: {
+					find: (provider: string, modelId: string) =>
+						provider === REDUCER_MODEL.provider && modelId === REDUCER_MODEL.id
+							? REDUCER_MODEL
+							: undefined,
+					getApiKeyAndHeaders: async (model: Model<string>) => {
+						authModel = model;
+						return {
+							ok: true,
+							apiKey: "fork-test-key",
+							headers: { "x-test-header": "fork" },
+							env: { TEST_REGION: "test" },
+							baseUrl: "https://fork.example.invalid/v1",
+						};
+					},
+				} as unknown as ExtensionContext["modelRegistry"],
+			},
+		);
 
-		const result = await callReducer(config, "pytest -q", true, archive, body, context, completion);
+		const result = await callReducer(
+			config,
+			"pytest -q",
+			true,
+			archive,
+			body,
+			context,
+			completion,
+		);
 
 		expect(result.ok).toBe(true);
 		expect(authModel).toBe(REDUCER_MODEL);
@@ -435,7 +543,9 @@ describe("evidence-preserving reducer", () => {
 		"reduces fused command output while preserving the mutation confirmation (failed=%s)",
 		async (failed) => {
 			const root = await storeRoot();
-			const signal = failed ? "ERROR test target failed" : "PASS test target completed";
+			const signal = failed
+				? "ERROR test target failed"
+				: "PASS test target completed";
 			const body = `${signal}\n${"diagnostic output\n".repeat(400)}`;
 			const { context, manager, pi } = load(
 				root,
@@ -448,20 +558,30 @@ describe("evidence-preserving reducer", () => {
 				})),
 			);
 
-			const result = (await pi.emit("tool_result", fusedEvent(body, failed), context)) as {
+			const result = (await pi.emit(
+				"tool_result",
+				fusedEvent(body, failed),
+				context,
+			)) as {
 				content: Array<{ type: string; text?: string }>;
 				details: Record<string, unknown>;
 				isError: boolean;
 			};
 
-			const projected = result.content.map((content) => content.text ?? "").join("\n");
+			const projected = result.content
+				.map((content) => content.text ?? "")
+				.join("\n");
 			expect(projected).toMatch(/Successfully wrote 12 bytes to target\.ts/u);
-			expect(projected).toMatch(failed ? /\[then_run:failed\]/u : /\[then_run:succeeded\]/u);
+			expect(projected).toMatch(
+				failed ? /\[then_run:failed\]/u : /\[then_run:succeeded\]/u,
+			);
 			expect(projected).toMatch(/sol_pi_evidence_receipt_v1/u);
 			expect(projected).not.toContain("diagnostic output");
 			expect(result.isError).toBe(failed);
 			expect(result.details.patch).toBe("test patch");
-			const candidate = manager.customEntryData().find((entry) => entry.kind === "candidate");
+			const candidate = manager
+				.customEntryData()
+				.find((entry) => entry.kind === "candidate");
 			expect(await readFile(String(candidate?.sourcePath), "utf8")).toBe(body);
 		},
 	);
@@ -474,14 +594,23 @@ describe("evidence-preserving reducer", () => {
 			throw new Error("unexpected model call");
 		});
 		const body = `ERROR nested failure\n${"diagnostic output\n".repeat(400)}`;
-		const structuredContent = { output: body, truncated: false, exit_code: 2, wall_time_seconds: 0.1 };
+		const structuredContent = {
+			output: body,
+			truncated: false,
+			exit_code: 2,
+			wall_time_seconds: 0.1,
+		};
 
 		const bash = bashEvent(body, {
 			toolCallId: "codemode-1/1",
 			parentToolCallId: "codemode-1",
 			structuredContent,
 		} as Partial<ToolResultEvent>);
-		const fused = { ...fusedEvent(body, true), toolCallId: "codemode-1/2", parentToolCallId: "codemode-1" };
+		const fused = {
+			...fusedEvent(body, true),
+			toolCallId: "codemode-1/2",
+			parentToolCallId: "codemode-1",
+		};
 
 		expect(await pi.emit("tool_result", bash, context)).toBeUndefined();
 		expect(await pi.emit("tool_result", fused, context)).toBeUndefined();
@@ -500,11 +629,16 @@ describe("evidence-preserving reducer", () => {
 		const event = bashEvent(body, {
 			toolName: "codemode",
 			toolCallId: "codemode-1",
-			input: { code: "return await tools.bash({ command: 'pytest -q' });", command: "pytest -q" },
+			input: {
+				code: "return await tools.bash({ command: 'pytest -q' });",
+				command: "pytest -q",
+			},
 		} as Partial<ToolResultEvent>);
 
 		expect(await pi.emit("tool_result", event, context)).toBeUndefined();
-		expect(await pi.emit("tool_result", { ...event, isError: false }, context)).toBeUndefined();
+		expect(
+			await pi.emit("tool_result", { ...event, isError: false }, context),
+		).toBeUndefined();
 		expect(calls).toBe(0);
 		expect(manager.customEntryData()).toEqual([]);
 	});
@@ -516,7 +650,10 @@ describe("evidence-preserving reducer", () => {
 				...fusedEvent(body, false),
 				content: [
 					{ type: "text", text: "Successfully wrote 12 bytes to target.ts" },
-					{ type: "text", text: `[then_run:succeeded]\n${body}\n\nCommand exited with code 7` },
+					{
+						type: "text",
+						text: `[then_run:succeeded]\n${body}\n\nCommand exited with code 7`,
+					},
 				],
 			}),
 		},
@@ -533,12 +670,18 @@ describe("evidence-preserving reducer", () => {
 			event: (body: string) =>
 				bashEvent(body, {
 					isError: false,
-					structuredContent: { output: body, truncated: false, exit_code: 2, wall_time_seconds: 0.1 },
+					structuredContent: {
+						output: body,
+						truncated: false,
+						exit_code: 2,
+						wall_time_seconds: 0.1,
+					},
 				} as Partial<ToolResultEvent>),
 		},
 		{
 			name: "a bash result whose inline status line is non-zero without isError",
-			event: (body: string) => bashEvent(`${body}\n\nCommand exited with code 2`, { isError: false }),
+			event: (body: string) =>
+				bashEvent(`${body}\n\nCommand exited with code 2`, { isError: false }),
 		},
 	])("skips $name and journals exit-state-mismatch", async ({ event }) => {
 		const root = await storeRoot();
@@ -549,10 +692,17 @@ describe("evidence-preserving reducer", () => {
 		});
 		const body = `ERROR test target failed\n${"diagnostic output\n".repeat(400)}`;
 
-		expect(await pi.emit("tool_result", event(body) as ToolResultEvent, context)).toBeUndefined();
+		expect(
+			await pi.emit("tool_result", event(body) as ToolResultEvent, context),
+		).toBeUndefined();
 		expect(calls).toBe(0);
 		const entries = manager.customEntryData();
-		expect(entries).toEqual([expect.objectContaining({ kind: "fallback", reason: "exit-state-mismatch" })]);
+		expect(entries).toEqual([
+			expect.objectContaining({
+				kind: "fallback",
+				reason: "exit-state-mismatch",
+			}),
+		]);
 	});
 
 	it("checks the exit status on the inline text before reading the full-output file", async () => {
@@ -579,7 +729,10 @@ describe("evidence-preserving reducer", () => {
 		expect(await pi.emit("tool_result", event, context)).toBeUndefined();
 		expect(calls).toBe(0);
 		expect(manager.customEntryData()).toContainEqual(
-			expect.objectContaining({ kind: "fallback", reason: "exit-state-mismatch" }),
+			expect.objectContaining({
+				kind: "fallback",
+				reason: "exit-state-mismatch",
+			}),
 		);
 	});
 
@@ -599,70 +752,96 @@ describe("evidence-preserving reducer", () => {
 		);
 		const event = bashEvent(body, {
 			isError: false,
-			structuredContent: { output: body, truncated: false, exit_code: 0, wall_time_seconds: 0.1 },
+			structuredContent: {
+				output: body,
+				truncated: false,
+				exit_code: 0,
+				wall_time_seconds: 0.1,
+			},
 		} as Partial<ToolResultEvent>);
 
-		const result = (await pi.emit("tool_result", event, context)) as { content: { text: string }[] } | undefined;
+		const result = (await pi.emit("tool_result", event, context)) as
+			| { content: { text: string }[] }
+			| undefined;
 		expect(result?.content[0]?.text).toMatch(/status=success/u);
 	});
 
 	it.each([
 		{ name: "inline", lines: 1_500 },
 		{ name: "truncated", lines: 5_000 },
-	])("reduces Pi's real failing bash result ($name) to a failure receipt", async ({ name, lines }) => {
-		const root = await storeRoot();
-		const signal = "ERROR real bash target failed";
-		const event = await realBashEvent(`printf '%s\\n' '${signal}'; seq 1 ${lines}; exit 2 # make`, root);
-		expect(event.isError).toBe(true);
-		// The truncated run leaves Pi's full-output file behind; it must be queued for cleanup.
-		expect(cleanupPaths.some((path) => basename(path).startsWith("pi-bash-"))).toBe(name === "truncated");
-		const { context, manager, pi } = load(root, modelComplete("", failureReceipt(signal)));
+	])(
+		"reduces Pi's real failing bash result ($name) to a failure receipt",
+		async ({ name, lines }) => {
+			const root = await storeRoot();
+			const signal = "ERROR real bash target failed";
+			const event = await realBashEvent(
+				`printf '%s\\n' '${signal}'; seq 1 ${lines}; exit 2 # make`,
+				root,
+			);
+			expect(event.isError).toBe(true);
+			// The truncated run leaves Pi's full-output file behind; it must be queued for cleanup.
+			expect(
+				cleanupPaths.some((path) => basename(path).startsWith("pi-bash-")),
+			).toBe(name === "truncated");
+			const { context, manager, pi } = load(
+				root,
+				modelComplete("", failureReceipt(signal)),
+			);
 
-		const result = (await pi.emit("tool_result", event, context)) as {
-			content: { text: string }[];
-			isError: boolean;
-		};
+			const result = (await pi.emit("tool_result", event, context)) as {
+				content: { text: string }[];
+				isError: boolean;
+			};
 
-		const receipt = result.content[0]?.text ?? "";
-		expect(receipt).toMatch(/status=failure/u);
-		expect(receipt).toContain(JSON.stringify(signal));
-		expect(result.isError).toBe(true);
-		const candidate = manager.customEntryData().find((entry) => entry.kind === "candidate");
-		const archived = await readFile(String(candidate?.sourcePath), "utf8");
-		expect(archived.startsWith(`${signal}\n1\n`)).toBe(true);
-		expect(archived).toContain(`\n${lines}\n`);
-	});
+			const receipt = result.content[0]?.text ?? "";
+			expect(receipt).toMatch(/status=failure/u);
+			expect(receipt).toContain(JSON.stringify(signal));
+			expect(result.isError).toBe(true);
+			const candidate = manager
+				.customEntryData()
+				.find((entry) => entry.kind === "candidate");
+			const archived = await readFile(String(candidate?.sourcePath), "utf8");
+			expect(archived.startsWith(`${signal}\n1\n`)).toBe(true);
+			expect(archived).toContain(`\n${lines}\n`);
+		},
+	);
 
-	it.each(["invented", "model-error"] as const)("fails open on %s", async (mode) => {
-		const root = await storeRoot();
-		const body = `ERROR real failure\n${"x".repeat(5000)}`;
-		const { context, manager, pi } = load(
-			root,
-			modelComplete(
-				body,
-				(input) => ({
-					schema: REDUCER_RECEIPT_SCHEMA,
-					source_sha256: sourceHash(input),
-					status: "failure",
-					uncertain: false,
-					evidence: [{ kind: "failure", quote: "ERROR invented failure" }],
-				}),
-				mode === "model-error" ? "error" : "stop",
-			),
-		);
+	it.each(["invented", "model-error"] as const)(
+		"fails open on %s",
+		async (mode) => {
+			const root = await storeRoot();
+			const body = `ERROR real failure\n${"x".repeat(5000)}`;
+			const { context, manager, pi } = load(
+				root,
+				modelComplete(
+					body,
+					(input) => ({
+						schema: REDUCER_RECEIPT_SCHEMA,
+						source_sha256: sourceHash(input),
+						status: "failure",
+						uncertain: false,
+						evidence: [{ kind: "failure", quote: "ERROR invented failure" }],
+					}),
+					mode === "model-error" ? "error" : "stop",
+				),
+			);
 
-		const result = await pi.emit("tool_result", bashEvent(body), context);
+			const result = await pi.emit("tool_result", bashEvent(body), context);
 
-		expect(result).toBeUndefined();
-		const fallbacks = manager.customEntryData().filter((entry) => entry.kind === "fallback");
-		expect(
-			fallbacks.some((entry) =>
-				mode === "model-error"
-					? entry.reason === "model-response-error" && entry.stopReason === "error"
-					: entry.reason === "unverifiable-quote",
-			),
-		).toBe(true);
-	});
+			expect(result).toBeUndefined();
+			const fallbacks = manager
+				.customEntryData()
+				.filter((entry) => entry.kind === "fallback");
+			expect(
+				fallbacks.some((entry) =>
+					mode === "model-error"
+						? entry.reason === "model-response-error" &&
+							entry.stopReason === "error"
+						: entry.reason === "unverifiable-quote",
+				),
+			).toBe(true);
+		},
+	);
 
 	it("fails open when Pi cannot complete the nested model call", async () => {
 		const root = await storeRoot();
@@ -671,9 +850,14 @@ describe("evidence-preserving reducer", () => {
 			throw new Error("authentication is not configured");
 		});
 
-		expect(await pi.emit("tool_result", bashEvent(body), context)).toBeUndefined();
+		expect(
+			await pi.emit("tool_result", bashEvent(body), context),
+		).toBeUndefined();
 		expect(manager.customEntryData()).toContainEqual(
-			expect.objectContaining({ kind: "fallback", reason: "model-call-exception" }),
+			expect.objectContaining({
+				kind: "fallback",
+				reason: "model-call-exception",
+			}),
 		);
 	});
 
@@ -699,10 +883,15 @@ describe("evidence-preserving reducer", () => {
 			},
 		);
 
-		expect(await pi.emit("tool_result", bashEvent(body), context)).toBeUndefined();
+		expect(
+			await pi.emit("tool_result", bashEvent(body), context),
+		).toBeUndefined();
 		expect(calls).toBe(0);
 		expect(manager.customEntryData()).toContainEqual(
-			expect.objectContaining({ kind: "fallback", reason: "reducer-model-unavailable" }),
+			expect.objectContaining({
+				kind: "fallback",
+				reason: "reducer-model-unavailable",
+			}),
 		);
 	});
 
@@ -722,7 +911,9 @@ describe("evidence-preserving reducer", () => {
 		});
 		const body = `ERROR no session storage\n${"x".repeat(5000)}`;
 
-		expect(await pi.emit("tool_result", bashEvent(body), context)).toBeUndefined();
+		expect(
+			await pi.emit("tool_result", bashEvent(body), context),
+		).toBeUndefined();
 		expect(calls).toBe(0);
 	});
 
@@ -753,16 +944,26 @@ describe("evidence-preserving reducer", () => {
 			context,
 		);
 		expect(input).toContain(fullBody);
-		const candidate = manager.customEntryData().find((entry) => entry.kind === "candidate");
-		expect(await readFile(String(candidate?.sourcePath), "utf8")).toBe(fullBody);
+		const candidate = manager
+			.customEntryData()
+			.find((entry) => entry.kind === "candidate");
+		expect(await readFile(String(candidate?.sourcePath), "utf8")).toBe(
+			fullBody,
+		);
 
 		const outsidePath = join(root, `pi-bash-${randomUUID()}.log`);
-		await writeFile(outsidePath, `ERROR outside file\n${"outside\n".repeat(600)}`);
+		await writeFile(
+			outsidePath,
+			`ERROR outside file\n${"outside\n".repeat(600)}`,
+		);
 		const inlineBody = `ERROR inline output\n${"inline diagnostic\n".repeat(400)}`;
 		input = "";
 		await pi.emit(
 			"tool_result",
-			bashEvent(inlineBody, { toolCallId: "call-2", details: { fullOutputPath: outsidePath } }),
+			bashEvent(inlineBody, {
+				toolCallId: "call-2",
+				details: { fullOutputPath: outsidePath },
+			}),
 			context,
 		);
 		expect(input).toContain(inlineBody);
@@ -777,7 +978,9 @@ describe("evidence-preserving reducer", () => {
 			throw new Error("unexpected model call");
 		});
 
-		expect(await pi.emit("tool_result", bashEvent("ERROR short"), context)).toBeUndefined();
+		expect(
+			await pi.emit("tool_result", bashEvent("ERROR short"), context),
+		).toBeUndefined();
 		expect(
 			await pi.emit(
 				"tool_result",

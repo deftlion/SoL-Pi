@@ -15,7 +15,12 @@ import {
 } from "./config.ts";
 import type { ProviderResult } from "./provider.ts";
 
-export type EvidenceKind = "fatal" | "failure" | "warning" | "target" | "summary";
+export type EvidenceKind =
+	| "fatal"
+	| "failure"
+	| "warning"
+	| "target"
+	| "summary";
 
 export interface VerifiedEvidence {
 	readonly kind: EvidenceKind;
@@ -51,7 +56,12 @@ export function reducerInstructions(): string {
 	].join("\n");
 }
 
-export function reducerInput(command: string, isError: boolean, archive: ArchiveObject, body: string): string {
+export function reducerInput(
+	command: string,
+	isError: boolean,
+	archive: ArchiveObject,
+	body: string,
+): string {
 	return [
 		`command_sha256=${sha256(command)}`,
 		`source_sha256=${archive.hash}`,
@@ -104,7 +114,13 @@ export function validateReceipt(
 	) {
 		return { ok: false, reason: "schema-mismatch" };
 	}
-	const allowedKinds = new Set<EvidenceKind>(["fatal", "failure", "warning", "target", "summary"]);
+	const allowedKinds = new Set<EvidenceKind>([
+		"fatal",
+		"failure",
+		"warning",
+		"target",
+		"summary",
+	]);
 	const evidence: VerifiedEvidence[] = [];
 	const seen = new Set<string>();
 	for (const item of evidenceValue) {
@@ -140,7 +156,10 @@ export function validateReceipt(
 	) {
 		return { ok: false, reason: "missing-failure-evidence" };
 	}
-	return { ok: true, value: { status: expectedStatus, uncertain: parsed.uncertain, evidence } };
+	return {
+		ok: true,
+		value: { status: expectedStatus, uncertain: parsed.uncertain, evidence },
+	};
 }
 
 export function receiptText(

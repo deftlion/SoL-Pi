@@ -29,9 +29,18 @@ import {
 	type WriteToolOptions,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import {
+	isNestedToolCallId,
+	renderSolPiTool,
+	showSolPiSavings,
+} from "../../tui.ts";
 import { resolveToolPath } from "./file-queue.ts";
-import { isNestedToolCallId, renderSolPiTool, showSolPiSavings } from "../../tui.ts";
-import { createThenRunSchema, runFusedMutation, type ThenRunInput, type ThenRunStatus } from "./then-run.ts";
+import {
+	createThenRunSchema,
+	runFusedMutation,
+	type ThenRunInput,
+	type ThenRunStatus,
+} from "./then-run.ts";
 
 const EDIT_THEN_RUN_DESCRIPTION =
 	"Command to run next on this file after the edit succeeds — e.g. run, build, start/restart, install, or check it; optional timeout in seconds. Skipped if the edit fails; a non-zero exit is reported but keeps the edit.";
@@ -68,7 +77,11 @@ function memoizeByCwd<T>(create: (cwd: string) => T): (cwd: string) => T {
  * from a codemode script (`<parent id>/<n>`) save no model round-trip of their
  * own: the script already chains tools inside one model call.
  */
-function announceSavings(status: ThenRunStatus, toolCallId: string, ctx: ExtensionContext): void {
+function announceSavings(
+	status: ThenRunStatus,
+	toolCallId: string,
+	ctx: ExtensionContext,
+): void {
 	if (status !== "succeeded" || isNestedToolCallId(toolCallId)) return;
 	showSolPiSavings(ctx, "Action Fusion", "1 model round-trip avoided");
 }
@@ -78,13 +91,22 @@ function announceSavings(status: ThenRunStatus, toolCallId: string, ctx: Extensi
  * failed or skipped command avoided no round-trip. Pi redraws the call row
  * with the settled `isError` as well, so both renderers drop it together.
  */
-function showsSavingsBanner(thenRun: unknown, context: { readonly isError?: boolean }): boolean {
+function showsSavingsBanner(
+	thenRun: unknown,
+	context: { readonly isError?: boolean },
+): boolean {
 	return Boolean(thenRun) && !context.isError;
 }
 
-export function createActionFusionExtension(options: ActionFusionOptions = {}): ExtensionFactory {
-	const baseEdit = memoizeByCwd((cwd: string) => createEditToolDefinition(cwd, options.editOptions));
-	const baseWrite = memoizeByCwd((cwd: string) => createWriteToolDefinition(cwd, options.writeOptions));
+export function createActionFusionExtension(
+	options: ActionFusionOptions = {},
+): ExtensionFactory {
+	const baseEdit = memoizeByCwd((cwd: string) =>
+		createEditToolDefinition(cwd, options.editOptions),
+	);
+	const baseWrite = memoizeByCwd((cwd: string) =>
+		createWriteToolDefinition(cwd, options.writeOptions),
+	);
 
 	return (pi: ExtensionAPI) => {
 		const editTemplate = baseEdit(process.cwd());
@@ -103,7 +125,9 @@ export function createActionFusionExtension(options: ActionFusionOptions = {}): 
 			...editTemplate,
 			parameters: editParameters,
 			async execute(toolCallId, input, signal, onUpdate, ctx) {
-				const { then_run, ...editInput } = input as typeof input & { then_run?: ThenRunInput };
+				const { then_run, ...editInput } = input as typeof input & {
+					then_run?: ThenRunInput;
+				};
 				const { result, status } = await runFusedMutation({
 					toolCallId,
 					absolutePath: resolveToolPath(ctx.cwd, input.path),
@@ -111,7 +135,14 @@ export function createActionFusionExtension(options: ActionFusionOptions = {}): 
 					bashOptions: options.bashOptions,
 					signal,
 					ctx,
-					mutate: () => baseEdit(ctx.cwd).execute(toolCallId, editInput, signal, onUpdate, ctx),
+					mutate: () =>
+						baseEdit(ctx.cwd).execute(
+							toolCallId,
+							editInput,
+							signal,
+							onUpdate,
+							ctx,
+						),
 				});
 				announceSavings(status, toolCallId, ctx);
 				return result;
@@ -119,13 +150,28 @@ export function createActionFusionExtension(options: ActionFusionOptions = {}): 
 			renderCall: (args, theme, context) => {
 				const base = baseEdit(context.cwd).renderCall!(args, theme, context);
 				return showsSavingsBanner(args.then_run, context)
-					? renderSolPiTool(theme, "Action Fusion", "1 model round-trip avoided", base)
+					? renderSolPiTool(
+							theme,
+							"Action Fusion",
+							"1 model round-trip avoided",
+							base,
+						)
 					: base;
 			},
 			renderResult: (result, resultOptions, theme, context) => {
-				const base = baseEdit(context.cwd).renderResult!(result, resultOptions, theme, context);
+				const base = baseEdit(context.cwd).renderResult!(
+					result,
+					resultOptions,
+					theme,
+					context,
+				);
 				return showsSavingsBanner(context.args.then_run, context)
-					? renderSolPiTool(theme, "Action Fusion", "1 model round-trip avoided", base)
+					? renderSolPiTool(
+							theme,
+							"Action Fusion",
+							"1 model round-trip avoided",
+							base,
+						)
 					: base;
 			},
 		});
@@ -134,7 +180,9 @@ export function createActionFusionExtension(options: ActionFusionOptions = {}): 
 			...writeTemplate,
 			parameters: writeParameters,
 			async execute(toolCallId, input, signal, onUpdate, ctx) {
-				const { then_run, ...writeInput } = input as typeof input & { then_run?: ThenRunInput };
+				const { then_run, ...writeInput } = input as typeof input & {
+					then_run?: ThenRunInput;
+				};
 				const { result, status } = await runFusedMutation({
 					toolCallId,
 					absolutePath: resolveToolPath(ctx.cwd, input.path),
@@ -142,7 +190,14 @@ export function createActionFusionExtension(options: ActionFusionOptions = {}): 
 					bashOptions: options.bashOptions,
 					signal,
 					ctx,
-					mutate: () => baseWrite(ctx.cwd).execute(toolCallId, writeInput, signal, onUpdate, ctx),
+					mutate: () =>
+						baseWrite(ctx.cwd).execute(
+							toolCallId,
+							writeInput,
+							signal,
+							onUpdate,
+							ctx,
+						),
 				});
 				announceSavings(status, toolCallId, ctx);
 				return result;
@@ -150,13 +205,28 @@ export function createActionFusionExtension(options: ActionFusionOptions = {}): 
 			renderCall: (args, theme, context) => {
 				const base = baseWrite(context.cwd).renderCall!(args, theme, context);
 				return showsSavingsBanner(args.then_run, context)
-					? renderSolPiTool(theme, "Action Fusion", "1 model round-trip avoided", base)
+					? renderSolPiTool(
+							theme,
+							"Action Fusion",
+							"1 model round-trip avoided",
+							base,
+						)
 					: base;
 			},
 			renderResult: (result, resultOptions, theme, context) => {
-				const base = baseWrite(context.cwd).renderResult!(result, resultOptions, theme, context);
+				const base = baseWrite(context.cwd).renderResult!(
+					result,
+					resultOptions,
+					theme,
+					context,
+				);
 				return showsSavingsBanner(context.args.then_run, context)
-					? renderSolPiTool(theme, "Action Fusion", "1 model round-trip avoided", base)
+					? renderSolPiTool(
+							theme,
+							"Action Fusion",
+							"1 model round-trip avoided",
+							base,
+						)
 					: base;
 			},
 		});

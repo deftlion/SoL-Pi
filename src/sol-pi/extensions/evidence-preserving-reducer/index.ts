@@ -52,7 +52,9 @@ export interface ReducedToolResult {
 export type EvidencePreservingReducerOptions = ReducerConfigOptions;
 
 function errorName(error: unknown): string | undefined {
-	return isRecord(error) && typeof error.name === "string" ? error.name : undefined;
+	return isRecord(error) && typeof error.name === "string"
+		? error.name
+		: undefined;
 }
 
 /**
@@ -62,7 +64,9 @@ function errorName(error: unknown): string | undefined {
  * replacing its content drops the `structuredContent` the calling script reads.
  */
 function isNestedToolResult(event: ToolResultEvent): boolean {
-	return (event as { parentToolCallId?: string }).parentToolCallId !== undefined;
+	return (
+		(event as { parentToolCallId?: string }).parentToolCallId !== undefined
+	);
 }
 
 export async function reduceToolResult(
@@ -73,13 +77,17 @@ export async function reduceToolResult(
 ): Promise<ReducedToolResult | undefined> {
 	if (isNestedToolResult(event)) return undefined;
 	const reducible = await reducibleToolResult(event);
-	if (!reducible || !DIAGNOSTIC_COMMAND.test(reducible.command)) return undefined;
+	if (!reducible || !DIAGNOSTIC_COMMAND.test(reducible.command))
+		return undefined;
 	const { body, command } = reducible;
 	if (Buffer.byteLength(body, "utf8") < config.minBytes) return undefined;
 	// The receipt status follows `isError`. When the result's own text disagrees
 	// (a non-zero exit or a failed then_run reported as success, or the reverse),
 	// leave the original output in place rather than certify the wrong status.
-	if (reducible.exitFailed !== undefined && reducible.exitFailed !== event.isError) {
+	if (
+		reducible.exitFailed !== undefined &&
+		reducible.exitFailed !== event.isError
+	) {
 		journal("fallback", {
 			toolCallId: event.toolCallId,
 			reason: "exit-state-mismatch",
@@ -89,7 +97,11 @@ export async function reduceToolResult(
 		return undefined;
 	}
 	if (body.length > config.maxChars) {
-		journal("fallback", { reason: "source-over-max-chars", sourceChars: body.length, maxChars: config.maxChars });
+		journal("fallback", {
+			reason: "source-over-max-chars",
+			sourceChars: body.length,
+			maxChars: config.maxChars,
+		});
 		return undefined;
 	}
 	if (LIKELY_SECRET.test(body)) {
@@ -110,7 +122,14 @@ export async function reduceToolResult(
 
 	let provider: ProviderResult;
 	try {
-		provider = await callReducer(config, command, event.isError, archive, body, context);
+		provider = await callReducer(
+			config,
+			command,
+			event.isError,
+			archive,
+			body,
+			context,
+		);
 	} catch (error) {
 		const name = errorName(error);
 		journal("fallback", {
@@ -146,7 +165,12 @@ export async function reduceToolResult(
 		return undefined;
 	}
 
-	const checked = validateReceipt(provider.outputText, archive, body, event.isError);
+	const checked = validateReceipt(
+		provider.outputText,
+		archive,
+		body,
+		event.isError,
+	);
 	if (!checked.ok) {
 		journal("fallback", {
 			toolCallId: event.toolCallId,
@@ -180,7 +204,11 @@ export async function reduceToolResult(
 		uncertain: checked.value.uncertain,
 		usage: provider.usage,
 	});
-	showSolPiSavings(context, "Luna Delegating", formatSavingsBytes(archive.bytes - receiptBytes));
+	showSolPiSavings(
+		context,
+		"Luna Delegating",
+		formatSavingsBytes(archive.bytes - receiptBytes),
+	);
 	return {
 		content: reducible.projectReceipt(receipt),
 		isError: event.isError,
@@ -199,9 +227,14 @@ export async function reduceToolResult(
 	};
 }
 
-export function createEvidencePreservingReducerExtension(options: EvidencePreservingReducerOptions = {}): ExtensionFactory {
+export function createEvidencePreservingReducerExtension(
+	options: EvidencePreservingReducerOptions = {},
+): ExtensionFactory {
 	return (pi: ExtensionAPI) => {
-		const states = new Map<string, { config: ReducerConfig; journal: Journal }>();
+		const states = new Map<
+			string,
+			{ config: ReducerConfig; journal: Journal }
+		>();
 		pi.on("tool_result", (event, context) => {
 			if (isNestedToolResult(event)) return undefined;
 			let root: string;
@@ -229,8 +262,8 @@ export {
 	REDUCER_EVENT_TYPE,
 	REDUCER_RECEIPT_PREFIX,
 	REDUCER_RECEIPT_SCHEMA,
-	type ReducerConfigOptions,
 	type ReducerConfig,
+	type ReducerConfigOptions,
 } from "./config.ts";
 export { validateReceipt } from "./receipt.ts";
 

@@ -26,14 +26,20 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function isBoundedString(value: unknown): value is string {
-	return typeof value === "string" && value.length > 0 && Buffer.byteLength(value) <= MAX_PLAN_STRING_BYTES;
+	return (
+		typeof value === "string" &&
+		value.length > 0 &&
+		Buffer.byteLength(value) <= MAX_PLAN_STRING_BYTES
+	);
 }
 
 function isPlanStatus(value: unknown): value is PlanStatus {
 	return PLAN_STATUSES.some((status) => status === value);
 }
 
-export function parsePlanSteps(value: unknown): readonly PlanStep[] | undefined {
+export function parsePlanSteps(
+	value: unknown,
+): readonly PlanStep[] | undefined {
 	if (!Array.isArray(value) || value.length > MAX_PLAN_STEPS) return;
 	const steps: PlanStep[] = [];
 	for (const item of value) {
@@ -52,7 +58,10 @@ export function parsePlanSteps(value: unknown): readonly PlanStep[] | undefined 
 	return steps;
 }
 
-export function analyzePlanTransition(previous: readonly PlanStep[], next: readonly PlanStep[]): PlanTransition {
+export function analyzePlanTransition(
+	previous: readonly PlanStep[],
+	next: readonly PlanStep[],
+): PlanTransition {
 	const previousById = new Map(previous.map((step) => [step.id, step]));
 	const completedSteps: PlanStep[] = [];
 	const advice: string[] = [];
@@ -60,13 +69,18 @@ export function analyzePlanTransition(previous: readonly PlanStep[], next: reado
 	for (const step of next) {
 		const prior = previousById.get(step.id);
 		// A newly introduced completed step establishes history, not a status transition.
-		if (prior && prior.status !== "completed" && step.status === "completed") completedSteps.push(step);
+		if (prior && prior.status !== "completed" && step.status === "completed")
+			completedSteps.push(step);
 		if (prior && prior.goal !== step.goal) {
-			advice.push(`Plan step ${JSON.stringify(step.id)} changed goal; reuse an id only for the same goal.`);
+			advice.push(
+				`Plan step ${JSON.stringify(step.id)} changed goal; reuse an id only for the same goal.`,
+			);
 		}
 	}
 
-	const inProgress = next.filter((step) => step.status === "in_progress").length;
+	const inProgress = next.filter(
+		(step) => step.status === "in_progress",
+	).length;
 	if (inProgress > 1) advice.push("Keep at most one plan step in_progress.");
 	if (inProgress === 0 && next.some((step) => step.status === "pending")) {
 		advice.push("Mark one pending plan step in_progress before starting it.");

@@ -9,7 +9,9 @@ import {
 	estimateRemainingRequests,
 } from "../src/sol-pi/extensions/online-context-compact/economics.ts";
 
-function decision(overrides: Partial<Parameters<typeof decideCompaction>[0]> = {}) {
+function decision(
+	overrides: Partial<Parameters<typeof decideCompaction>[0]> = {},
+) {
 	return decideCompaction({
 		writeTokens: 80_000,
 		archiveTokens: 60_000,
@@ -63,7 +65,10 @@ describe("Online Context Compact economics", () => {
 			decision({
 				contextTokens: 195_000,
 				cacheWriteReadRatio: 100,
-				economics: { ...DEFAULT_COMPACTION_ECONOMICS, windowReserveTokens: 10_000 },
+				economics: {
+					...DEFAULT_COMPACTION_ECONOMICS,
+					windowReserveTokens: 10_000,
+				},
 			}),
 		).toMatchObject({ compact: true, reason: "window_protection" });
 	});
@@ -83,7 +88,9 @@ describe("Online Context Compact economics", () => {
 		});
 		expect(result.compact).toBe(false);
 		expect(result.reason).toBe("deferred_carried_debt");
-		expect(result.combinedBreakevenRequests).toBeGreaterThan(result.breakevenRequests ?? 0);
+		expect(result.combinedBreakevenRequests).toBeGreaterThan(
+			result.breakevenRequests ?? 0,
+		);
 	});
 
 	it("prices carried debt against savings from every active compaction", () => {
@@ -112,7 +119,9 @@ describe("Online Context Compact economics", () => {
 	});
 
 	it("cools down economic compaction within two requests of the last compaction", () => {
-		expect(decision({ priorCompactionCount: 1, requestsSinceLastCompaction: 1 })).toMatchObject({
+		expect(
+			decision({ priorCompactionCount: 1, requestsSinceLastCompaction: 1 }),
+		).toMatchObject({
 			compact: false,
 			reason: "deferred_post_compaction_cooldown",
 			requestsSinceLastCompaction: 1,
@@ -120,7 +129,9 @@ describe("Online Context Compact economics", () => {
 	});
 
 	it("allows economic compaction once the cooldown window has passed", () => {
-		expect(decision({ priorCompactionCount: 1, requestsSinceLastCompaction: 2 })).toMatchObject({
+		expect(
+			decision({ priorCompactionCount: 1, requestsSinceLastCompaction: 2 }),
+		).toMatchObject({
 			compact: true,
 			reason: "economic",
 			requestsSinceLastCompaction: 2,
@@ -134,7 +145,10 @@ describe("Online Context Compact economics", () => {
 				requestsSinceLastCompaction: 1,
 				contextTokens: 195_000,
 				cacheWriteReadRatio: 100,
-				economics: { ...DEFAULT_COMPACTION_ECONOMICS, windowReserveTokens: 10_000 },
+				economics: {
+					...DEFAULT_COMPACTION_ECONOMICS,
+					windowReserveTokens: 10_000,
+				},
 			}),
 		).toMatchObject({ compact: true, reason: "window_protection" });
 	});

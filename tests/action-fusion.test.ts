@@ -5,22 +5,27 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	type BashOperations,
 	createBashToolDefinition,
 	type ExtensionAPI,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { withFusedFileQueue } from "../src/sol-pi/extensions/action-fusion/file-queue.ts";
 import {
 	type ActionFusionOptions,
 	assertUnchangedBeforeCommand,
 	createActionFusionExtension,
 	executeMutationThenRun,
 } from "../src/sol-pi/extensions/action-fusion/index.ts";
-import { withFusedFileQueue } from "../src/sol-pi/extensions/action-fusion/file-queue.ts";
 import { runFusedMutation } from "../src/sol-pi/extensions/action-fusion/then-run.ts";
-import { componentText, fakeToolContext, plainTheme, type ToolExecuteContext } from "./helpers.ts";
+import {
+	componentText,
+	fakeToolContext,
+	plainTheme,
+	type ToolExecuteContext,
+} from "./helpers.ts";
 
 function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
@@ -34,14 +39,19 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 	return { promise, resolve };
 }
 
-function text(result: { content: Array<{ type: string; text?: string }> }): string {
+function text(result: {
+	content: Array<{ type: string; text?: string }>;
+}): string {
 	return result.content
 		.filter((block) => block.type === "text")
 		.map((block) => block.text ?? "")
 		.join("\n");
 }
 
-type ObjectSchema = { properties: Record<string, unknown>; required?: string[] };
+type ObjectSchema = {
+	properties: Record<string, unknown>;
+	required?: string[];
+};
 type FusedTools = { edit: ToolDefinition; write: ToolDefinition };
 
 function objectSchema(tool: ToolDefinition): ObjectSchema {
@@ -56,18 +66,30 @@ function loadFusedTools(options?: ActionFusionOptions): FusedTools {
 	createActionFusionExtension(options)(pi);
 	const edit = registered.get("edit");
 	const write = registered.get("write");
-	if (!edit || !write) throw new Error("action fusion did not register edit and write");
+	if (!edit || !write)
+		throw new Error("action fusion did not register edit and write");
 	return { edit, write };
 }
 
-function createContext(cwd: string, overrides: Record<string, unknown> = {}): ToolExecuteContext {
+function createContext(
+	cwd: string,
+	overrides: Record<string, unknown> = {},
+): ToolExecuteContext {
 	return fakeToolContext(cwd, { cwd, ...overrides });
 }
 
 function tuiContext(cwd: string) {
 	const notify = vi.fn();
 	const setStatus = vi.fn();
-	return { ctx: createContext(cwd, { mode: "tui", hasUI: true, ui: { notify, setStatus } }), notify, setStatus };
+	return {
+		ctx: createContext(cwd, {
+			mode: "tui",
+			hasUI: true,
+			ui: { notify, setStatus },
+		}),
+		notify,
+		setStatus,
+	};
 }
 
 /**
@@ -75,9 +97,17 @@ function tuiContext(cwd: string) {
  * throws. Detected from the installed bash, not from a version string.
  */
 async function bashReturnsNonZeroExit(): Promise<boolean> {
-	const bash = createBashToolDefinition(tmpdir(), { operations: { exec: async () => ({ exitCode: 7 }) } });
+	const bash = createBashToolDefinition(tmpdir(), {
+		operations: { exec: async () => ({ exitCode: 7 }) },
+	});
 	try {
-		await bash.execute("probe", { command: "exit 7" }, undefined, undefined, createContext(tmpdir()));
+		await bash.execute(
+			"probe",
+			{ command: "exit 7" },
+			undefined,
+			undefined,
+			createContext(tmpdir()),
+		);
 		return true;
 	} catch {
 		return false;
@@ -96,7 +126,11 @@ async function createTempDir(): Promise<string> {
 
 afterEach(async () => {
 	vi.useRealTimers();
-	await Promise.all(tempDirs.splice(0, tempDirs.length).map((dir) => rm(dir, { recursive: true, force: true })));
+	await Promise.all(
+		tempDirs
+			.splice(0, tempDirs.length)
+			.map((dir) => rm(dir, { recursive: true, force: true })),
+	);
 });
 
 describe("action fusion then_run", () => {
@@ -130,50 +164,85 @@ describe("action fusion then_run", () => {
 	it("keeps the built-in path and content parameters", () => {
 		const { edit, write } = loadFusedTools();
 
-		expect(Object.keys(objectSchema(write).properties)).toEqual(["path", "content", "then_run"]);
-		expect(Object.keys(objectSchema(edit).properties)).toEqual(["path", "edits", "then_run"]);
+		expect(Object.keys(objectSchema(write).properties)).toEqual([
+			"path",
+			"content",
+			"then_run",
+		]);
+		expect(Object.keys(objectSchema(edit).properties)).toEqual([
+			"path",
+			"edits",
+			"then_run",
+		]);
 		expect(write.name).toBe("write");
 		expect(edit.name).toBe("edit");
 	});
 
 	it.each([
-		{ label: "default checkout name", cwd: join(tmpdir(), "SoL-Pi"), path: "target.ts" },
-		{ label: "unrelated checkout name", cwd: join(tmpdir(), "plain-checkout"), path: "target.ts" },
-		{ label: "repository name in the target path", cwd: join(tmpdir(), "plain-checkout"), path: "SoL-Pi/target.ts" },
-	])("renders a fused mutation as an English lightning savings call ($label)", ({ cwd, path }) => {
-		const { write } = loadFusedTools();
-		const fusedArgs = {
-			path,
-			content: "export {};\n",
-			then_run: { command: "npm test" },
-		};
-		const fused = write.renderCall!(fusedArgs, plainTheme, {
-			cwd,
-			args: fusedArgs,
-		} as never);
-		const plainArgs = { path, content: "export {};\n" };
-		const plain = write.renderCall!(plainArgs, plainTheme, {
-			cwd,
-			args: plainArgs,
-		} as never);
+		{
+			label: "default checkout name",
+			cwd: join(tmpdir(), "SoL-Pi"),
+			path: "target.ts",
+		},
+		{
+			label: "unrelated checkout name",
+			cwd: join(tmpdir(), "plain-checkout"),
+			path: "target.ts",
+		},
+		{
+			label: "repository name in the target path",
+			cwd: join(tmpdir(), "plain-checkout"),
+			path: "SoL-Pi/target.ts",
+		},
+	])(
+		"renders a fused mutation as an English lightning savings call ($label)",
+		({ cwd, path }) => {
+			const { write } = loadFusedTools();
+			const fusedArgs = {
+				path,
+				content: "export {};\n",
+				then_run: { command: "npm test" },
+			};
+			const fused = write.renderCall!(fusedArgs, plainTheme, {
+				cwd,
+				args: fusedArgs,
+			} as never);
+			const plainArgs = { path, content: "export {};\n" };
+			const plain = write.renderCall!(plainArgs, plainTheme, {
+				cwd,
+				args: plainArgs,
+			} as never);
 
-		expect(componentText(fused)).toContain("⚡ SoL-Pi · Action Fusion");
-		expect(componentText(fused)).toContain("Money saved · 1 model round-trip avoided");
-		// A normal path or its OSC 8 hyperlink may contain the repository name.
-		expect(componentText(plain)).not.toContain("⚡ SoL-Pi · Action Fusion");
-		expect(componentText(plain)).not.toContain("Money saved · 1 model round-trip avoided");
-	});
+			expect(componentText(fused)).toContain("⚡ SoL-Pi · Action Fusion");
+			expect(componentText(fused)).toContain(
+				"Money saved · 1 model round-trip avoided",
+			);
+			// A normal path or its OSC 8 hyperlink may contain the repository name.
+			expect(componentText(plain)).not.toContain("⚡ SoL-Pi · Action Fusion");
+			expect(componentText(plain)).not.toContain(
+				"Money saved · 1 model round-trip avoided",
+			);
+		},
+	);
 
 	it("drops the savings banner once a fused call settles as an error", () => {
 		const { edit, write } = loadFusedTools();
 		const cases = [
 			{
 				tool: write,
-				args: { path: "target.ts", content: "export {};\n", then_run: { command: "npm test" } },
+				args: {
+					path: "target.ts",
+					content: "export {};\n",
+					then_run: { command: "npm test" },
+				},
 			},
 			{
 				tool: edit,
-				args: { path: "target.ts", edits: [{ oldText: "a", newText: "b" }], then_run: { command: "npm test" } },
+				args: {
+					path: "target.ts",
+					edits: [{ oldText: "a", newText: "b" }],
+					then_run: { command: "npm test" },
+				},
 			},
 		];
 		for (const { tool, args } of cases) {
@@ -193,19 +262,37 @@ describe("action fusion then_run", () => {
 					isError,
 				};
 				const result = {
-					content: [{ type: "text" as const, text: isError ? "[then_run:failed]\nboom" : "[then_run:succeeded]\nok" }],
+					content: [
+						{
+							type: "text" as const,
+							text: isError
+								? "[then_run:failed]\nboom"
+								: "[then_run:succeeded]\nok",
+						},
+					],
 					details: undefined,
 				};
-				const call = componentText(tool.renderCall!(args, plainTheme, context as never));
+				const call = componentText(
+					tool.renderCall!(args, plainTheme, context as never),
+				);
 				const rendered = componentText(
-					tool.renderResult!(result, { expanded: false, isPartial: false }, plainTheme, context as never),
+					tool.renderResult!(
+						result,
+						{ expanded: false, isPartial: false },
+						plainTheme,
+						context as never,
+					),
 				);
 				return { call, rendered };
 			};
 
 			const succeeded = render(false);
-			expect(succeeded.call).toContain("Money saved · 1 model round-trip avoided");
-			expect(succeeded.rendered).toContain("Money saved · 1 model round-trip avoided");
+			expect(succeeded.call).toContain(
+				"Money saved · 1 model round-trip avoided",
+			);
+			expect(succeeded.rendered).toContain(
+				"Money saved · 1 model round-trip avoided",
+			);
 			const failed = render(true);
 			expect(failed.call).not.toContain("SoL-Pi");
 			expect(failed.rendered).not.toContain("SoL-Pi");
@@ -229,7 +316,11 @@ describe("action fusion then_run", () => {
 
 		const result = await write.execute(
 			"write-1",
-			{ path: filePath, content: "new content\n", then_run: { command: "check write" } },
+			{
+				path: filePath,
+				content: "new content\n",
+				then_run: { command: "check write" },
+			},
 			undefined,
 			undefined,
 			createContext(dir),
@@ -250,10 +341,18 @@ describe("action fusion then_run", () => {
 
 		await write.execute(
 			"write-tui",
-			{ path: "target.ts", content: "export {};\n", then_run: { command: "npm test" } },
+			{
+				path: "target.ts",
+				content: "export {};\n",
+				then_run: { command: "npm test" },
+			},
 			undefined,
 			undefined,
-			createContext(dir, { mode: "tui", hasUI: true, ui: { notify, setStatus } }),
+			createContext(dir, {
+				mode: "tui",
+				hasUI: true,
+				ui: { notify, setStatus },
+			}),
 		);
 
 		expect(notify).toHaveBeenCalledWith(
@@ -277,7 +376,11 @@ describe("action fusion then_run", () => {
 
 		const result = await edit.execute(
 			"edit-1",
-			{ path: filePath, edits: [{ oldText: "before", newText: "after" }], then_run: { command: "check edit" } },
+			{
+				path: filePath,
+				edits: [{ oldText: "before", newText: "after" }],
+				then_run: { command: "check edit" },
+			},
 			undefined,
 			undefined,
 			createContext(dir),
@@ -340,7 +443,9 @@ describe("action fusion then_run", () => {
 			expect(text(result)).not.toContain("[then_run:succeeded]");
 		} else {
 			// Pi 0.84: bash throws on a non-zero exit.
-			await expect(run).rejects.toThrow(/Successfully wrote[\s\S]*\[then_run:failed\][\s\S]*validation failed/u);
+			await expect(run).rejects.toThrow(
+				/Successfully wrote[\s\S]*\[then_run:failed\][\s\S]*validation failed/u,
+			);
 		}
 		expect(await readFile(filePath, "utf8")).toBe("keep me\n");
 	});
@@ -355,7 +460,10 @@ describe("action fusion then_run", () => {
 			{
 				path: filePath,
 				content: "kept\n",
-				then_run: { command: "echo 'checking [then_run:succeeded]'; echo boom >&2; exit 7" },
+				then_run: {
+					command:
+						"echo 'checking [then_run:succeeded]'; echo boom >&2; exit 7",
+				},
 			},
 			undefined,
 			undefined,
@@ -366,7 +474,9 @@ describe("action fusion then_run", () => {
 		if (nonZeroExitIsResult) {
 			const result = await run;
 			expect((result as { isError?: boolean }).isError).toBe(true);
-			expect((result as { structuredContent?: unknown }).structuredContent).toBeUndefined();
+			expect(
+				(result as { structuredContent?: unknown }).structuredContent,
+			).toBeUndefined();
 			observed = text(result);
 		} else {
 			observed = await run.then(
@@ -384,25 +494,36 @@ describe("action fusion then_run", () => {
 		expect(setStatus).not.toHaveBeenCalled();
 	});
 
-	it.skipIf(!nonZeroExitIsResult)("keeps the edit diff details when then_run exits non-zero", async () => {
-		const dir = await createTempDir();
-		const filePath = join(dir, "diff.txt");
-		await writeFile(filePath, "before\n", "utf8");
-		const { edit } = loadFusedTools({ bashOptions: { operations: { exec: async () => ({ exitCode: 3 }) } } });
+	it.skipIf(!nonZeroExitIsResult)(
+		"keeps the edit diff details when then_run exits non-zero",
+		async () => {
+			const dir = await createTempDir();
+			const filePath = join(dir, "diff.txt");
+			await writeFile(filePath, "before\n", "utf8");
+			const { edit } = loadFusedTools({
+				bashOptions: { operations: { exec: async () => ({ exitCode: 3 }) } },
+			});
 
-		const result = await edit.execute(
-			"edit-fail",
-			{ path: filePath, edits: [{ oldText: "before", newText: "after" }], then_run: { command: "check" } },
-			undefined,
-			undefined,
-			createContext(dir),
-		);
+			const result = await edit.execute(
+				"edit-fail",
+				{
+					path: filePath,
+					edits: [{ oldText: "before", newText: "after" }],
+					then_run: { command: "check" },
+				},
+				undefined,
+				undefined,
+				createContext(dir),
+			);
 
-		expect((result as { isError?: boolean }).isError).toBe(true);
-		expect((result.details as { diff?: string } | undefined)?.diff).toContain("after");
-		expect(text(result)).toContain("[then_run:failed]");
-		expect(await readFile(filePath, "utf8")).toBe("after\n");
-	});
+			expect((result as { isError?: boolean }).isError).toBe(true);
+			expect((result.details as { diff?: string } | undefined)?.diff).toContain(
+				"after",
+			);
+			expect(text(result)).toContain("[then_run:failed]");
+			expect(await readFile(filePath, "utf8")).toBe("after\n");
+		},
+	);
 
 	it("announces savings after a real successful command but not for calls nested in a script", async () => {
 		const dir = await createTempDir();
@@ -440,7 +561,13 @@ describe("action fusion then_run", () => {
 		const { ctx, notify } = tuiContext(dir);
 		const { write } = loadFusedTools();
 
-		await write.execute("write-no-then-run", { path: "plain.txt", content: "x\n" }, undefined, undefined, ctx);
+		await write.execute(
+			"write-no-then-run",
+			{ path: "plain.txt", content: "x\n" },
+			undefined,
+			undefined,
+			ctx,
+		);
 
 		expect(notify).not.toHaveBeenCalled();
 	});
@@ -485,7 +612,10 @@ describe("action fusion then_run", () => {
 		await writeFile(join(dir, "status.txt"), "mutated\n", "utf8");
 		const base = {
 			absolutePath: join(dir, "status.txt"),
-			mutate: async () => ({ content: [{ type: "text" as const, text: "mutated" }], details: undefined }),
+			mutate: async () => ({
+				content: [{ type: "text" as const, text: "mutated" }],
+				details: undefined,
+			}),
 			signal: undefined,
 			ctx: createContext(dir),
 		};
@@ -583,13 +713,24 @@ describe("action fusion then_run", () => {
 			ctx,
 		);
 		await thenRunStarted.promise;
-		const second = write.execute("write-4", { path: filePath, content: "second" }, undefined, undefined, ctx);
+		const second = write.execute(
+			"write-4",
+			{ path: filePath, content: "second" },
+			undefined,
+			undefined,
+			ctx,
+		);
 		await delay(20);
 		expect(events).toEqual(["write:first", "then_run:start"]);
 
 		finishThenRun.resolve();
 		await Promise.all([first, second]);
-		expect(events).toEqual(["write:first", "then_run:start", "then_run:end", "write:second"]);
+		expect(events).toEqual([
+			"write:first",
+			"then_run:start",
+			"then_run:end",
+			"write:second",
+		]);
 	});
 
 	it("passes then_run timeout through to the bash operation", async () => {
@@ -605,7 +746,11 @@ describe("action fusion then_run", () => {
 
 		const result = await write.execute(
 			"write-timeout",
-			{ path: "timeout.txt", content: "content\n", then_run: { command: "check with timeout", timeout: 12 } },
+			{
+				path: "timeout.txt",
+				content: "content\n",
+				then_run: { command: "check with timeout", timeout: 12 },
+			},
 			undefined,
 			undefined,
 			createContext(dir),
@@ -627,7 +772,11 @@ describe("action fusion then_run", () => {
 
 		await write.execute(
 			"write-default-shell",
-			{ path: "default-shell.txt", content: "content\n", then_run: { command: "check default shell" } },
+			{
+				path: "default-shell.txt",
+				content: "content\n",
+				then_run: { command: "check default shell" },
+			},
 			undefined,
 			undefined,
 			createContext(dir),
@@ -667,6 +816,8 @@ describe("action fusion then_run", () => {
 			assertUnchangedBeforeCommand(filePath, async () => {
 				await writeFile(filePath, "external change\n");
 			}),
-		).rejects.toThrow("[then_run:skipped] target content changed after the fused mutation");
+		).rejects.toThrow(
+			"[then_run:skipped] target content changed after the fused mutation",
+		);
 	});
 });

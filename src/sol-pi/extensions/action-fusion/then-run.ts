@@ -5,7 +5,11 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import { type BashToolOptions, createBashToolDefinition, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import {
+	type BashToolOptions,
+	createBashToolDefinition,
+	type ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { withFusedFileQueue } from "./file-queue.ts";
 
@@ -35,7 +39,11 @@ export function createThenRunSchema(description: string) {
 		Type.Object(
 			{
 				command: Type.String({ description: "Bash command to run" }),
-				timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (optional, no default timeout)" })),
+				timeout: Type.Optional(
+					Type.Number({
+						description: "Timeout in seconds (optional, no default timeout)",
+					}),
+				),
 			},
 			{ description },
 		),
@@ -53,19 +61,25 @@ function resultText(result: AgentToolResult<unknown>): string {
 		.join("\n");
 }
 
-const THEN_RUN_SKIPPED_REASON = "The file mutation did not complete successfully; the command was not run.";
+const THEN_RUN_SKIPPED_REASON =
+	"The file mutation did not complete successfully; the command was not run.";
 
 function thenRunSkippedError(error: unknown): Error {
-	return new Error(`${errorText(error)}\n\n${THEN_RUN_SKIPPED} ${THEN_RUN_SKIPPED_REASON}`);
+	return new Error(
+		`${errorText(error)}\n\n${THEN_RUN_SKIPPED} ${THEN_RUN_SKIPPED_REASON}`,
+	);
 }
 
 async function fileSha256(path: string): Promise<string> {
-	return createHash("sha256").update(await readFile(path)).digest("hex");
+	return createHash("sha256")
+		.update(await readFile(path))
+		.digest("hex");
 }
 
 export async function assertUnchangedBeforeCommand(
 	path: string,
-	yieldForInterference: () => Promise<void> = () => new Promise<void>((resolve) => setImmediate(resolve)),
+	yieldForInterference: () => Promise<void> = () =>
+		new Promise<void>((resolve) => setImmediate(resolve)),
 ): Promise<void> {
 	try {
 		const mutationHash = await fileSha256(path);
@@ -75,7 +89,9 @@ export async function assertUnchangedBeforeCommand(
 			throw new Error("target content changed after the fused mutation");
 		}
 	} catch (error) {
-		throw new Error(`${THEN_RUN_SKIPPED} ${errorText(error)}; the command was not run.`);
+		throw new Error(
+			`${THEN_RUN_SKIPPED} ${errorText(error)}; the command was not run.`,
+		);
 	}
 }
 
@@ -123,7 +139,10 @@ export async function runFusedMutation<TDetails>({
 	bashOptions,
 	signal,
 	ctx,
-}: FusedMutationOptions<TDetails>): Promise<{ result: AgentToolResult<TDetails>; status: ThenRunStatus }> {
+}: FusedMutationOptions<TDetails>): Promise<{
+	result: AgentToolResult<TDetails>;
+	status: ThenRunStatus;
+}> {
 	return withFusedFileQueue(absolutePath, async () => {
 		let mutationResult: AgentToolResult<TDetails>;
 		try {
@@ -140,7 +159,11 @@ export async function runFusedMutation<TDetails>({
 		}
 		if (isErrorResult(mutationResult)) {
 			return {
-				result: appendThenRunText(mutationResult, `${THEN_RUN_SKIPPED} ${THEN_RUN_SKIPPED_REASON}`, true),
+				result: appendThenRunText(
+					mutationResult,
+					`${THEN_RUN_SKIPPED} ${THEN_RUN_SKIPPED_REASON}`,
+					true,
+				),
 				status: "skipped",
 			};
 		}
@@ -149,15 +172,29 @@ export async function runFusedMutation<TDetails>({
 		const bash = createBashToolDefinition(ctx.cwd, bashOptions);
 		let bashResult: AgentToolResult<unknown>;
 		try {
-			bashResult = await bash.execute(`${toolCallId}:then_run`, thenRun, signal, undefined, ctx);
+			bashResult = await bash.execute(
+				`${toolCallId}:then_run`,
+				thenRun,
+				signal,
+				undefined,
+				ctx,
+			);
 		} catch (error) {
 			const mutationOutput = resultText(mutationResult);
-			throw new Error([mutationOutput, THEN_RUN_FAILED, errorText(error)].filter(Boolean).join("\n\n"));
+			throw new Error(
+				[mutationOutput, THEN_RUN_FAILED, errorText(error)]
+					.filter(Boolean)
+					.join("\n\n"),
+			);
 		}
 		const output = resultText(bashResult);
 		if (isErrorResult(bashResult)) {
 			return {
-				result: appendThenRunText(mutationResult, output ? `${THEN_RUN_FAILED}\n${output}` : THEN_RUN_FAILED, true),
+				result: appendThenRunText(
+					mutationResult,
+					output ? `${THEN_RUN_FAILED}\n${output}` : THEN_RUN_FAILED,
+					true,
+				),
 				status: "failed",
 			};
 		}
@@ -173,7 +210,9 @@ export async function runFusedMutation<TDetails>({
 }
 
 /** Pi 0.99+ results may report a failure with `isError` instead of throwing; 0.84 has no such field. */
-type MaybeErrorResult<TDetails> = AgentToolResult<TDetails> & { isError?: boolean };
+type MaybeErrorResult<TDetails> = AgentToolResult<TDetails> & {
+	isError?: boolean;
+};
 
 function isErrorResult(result: AgentToolResult<unknown>): boolean {
 	return (result as MaybeErrorResult<unknown>).isError === true;

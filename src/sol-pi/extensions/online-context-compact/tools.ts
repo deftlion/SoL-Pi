@@ -3,7 +3,10 @@
  * SPDX-License-Identifier: MIT
  */
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { renderSolPiTool } from "../../tui.ts";
@@ -24,13 +27,19 @@ export type PlanUpdateInput = {
 };
 
 export type OnlineToolHandlers = {
-	readonly updatePlan: (input: PlanUpdateInput) => Promise<AgentToolResult<Readonly<Record<string, unknown>>>>;
+	readonly updatePlan: (
+		input: PlanUpdateInput,
+	) => Promise<AgentToolResult<Readonly<Record<string, unknown>>>>;
 };
 
 const progressSchema = Type.Object(
 	{
-		files_changed: Type.Array(Type.String({ maxLength: 1000 }), { maxItems: 128 }),
-		verification: Type.Array(Type.String({ maxLength: 1000 }), { maxItems: 64 }),
+		files_changed: Type.Array(Type.String({ maxLength: 1000 }), {
+			maxItems: 128,
+		}),
+		verification: Type.Array(Type.String({ maxLength: 1000 }), {
+			maxItems: 64,
+		}),
 		decisions: Type.Array(Type.String({ maxLength: 1000 }), { maxItems: 64 }),
 	},
 	{ additionalProperties: false },
@@ -53,7 +62,10 @@ const planStepSchema = Type.Object(
  */
 const MODEL_ONLY_EXPOSURE = { exposure: "model-only" } as const;
 
-export function registerOnlineTools(pi: ExtensionAPI, handlers: OnlineToolHandlers): void {
+export function registerOnlineTools(
+	pi: ExtensionAPI,
+	handlers: OnlineToolHandlers,
+): void {
 	pi.registerTool({
 		...MODEL_ONLY_EXPOSURE,
 		name: "update_plan",
@@ -85,22 +97,40 @@ export function registerOnlineTools(pi: ExtensionAPI, handlers: OnlineToolHandle
 				context,
 			}),
 		renderCall(params, theme) {
-			const completed = params.steps.filter((step) => step.status === "completed").length;
-			return renderSolPiTool(
-				theme,
-				"Online Context Compact",
-				"compacts only when projected savings are positive",
-				new Text(theme.fg("dim", `Plan: ${params.steps.length} steps, ${completed} completed`), 0, 0),
-			);
-		},
-		renderResult(result, { isPartial }, theme) {
-			const boundary = (result.details as { boundary?: boolean } | undefined)?.boundary === true;
+			const completed = params.steps.filter(
+				(step) => step.status === "completed",
+			).length;
 			return renderSolPiTool(
 				theme,
 				"Online Context Compact",
 				"compacts only when projected savings are positive",
 				new Text(
-					theme.fg(isPartial ? "warning" : "dim", isPartial ? "Updating plan..." : boundary ? "Progress boundary recorded" : "Plan recorded"),
+					theme.fg(
+						"dim",
+						`Plan: ${params.steps.length} steps, ${completed} completed`,
+					),
+					0,
+					0,
+				),
+			);
+		},
+		renderResult(result, { isPartial }, theme) {
+			const boundary =
+				(result.details as { boundary?: boolean } | undefined)?.boundary ===
+				true;
+			return renderSolPiTool(
+				theme,
+				"Online Context Compact",
+				"compacts only when projected savings are positive",
+				new Text(
+					theme.fg(
+						isPartial ? "warning" : "dim",
+						isPartial
+							? "Updating plan..."
+							: boundary
+								? "Progress boundary recorded"
+								: "Plan recorded",
+					),
 					0,
 					0,
 				),

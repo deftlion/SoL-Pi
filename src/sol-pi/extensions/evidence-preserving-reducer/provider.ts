@@ -3,7 +3,13 @@
  * SPDX-License-Identifier: MIT
  */
 
-import type { Api, AssistantMessage, Context, Model, ProviderStreamOptions } from "@earendil-works/pi-ai";
+import type {
+	Api,
+	AssistantMessage,
+	Context,
+	Model,
+	ProviderStreamOptions,
+} from "@earendil-works/pi-ai";
 import { complete as completeCompat } from "@earendil-works/pi-ai/compat";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ArchiveObject } from "./archive.ts";
@@ -27,7 +33,9 @@ type CompatibleModelRegistry = {
 		context: Context,
 		options?: ProviderStreamOptions,
 	) => Promise<AssistantMessage>;
-	readonly getApiKeyAndHeaders: (model: Model<Api>) => Promise<ResolvedCompatAuth>;
+	readonly getApiKeyAndHeaders: (
+		model: Model<Api>,
+	) => Promise<ResolvedCompatAuth>;
 };
 
 export interface NormalizedUsage {
@@ -53,7 +61,9 @@ export class ReducerModelUnavailableError extends Error {
 }
 
 function responseOutputText(response: AssistantMessage): string {
-	return response.content.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("");
+	return response.content
+		.flatMap((item) => (item.type === "text" ? [item.text] : []))
+		.join("");
 }
 
 function normalizedUsage(response: AssistantMessage): NormalizedUsage {
@@ -66,12 +76,21 @@ function normalizedUsage(response: AssistantMessage): NormalizedUsage {
 	};
 }
 
-function stringHeaders(headers: Record<string, string | null> | undefined): Record<string, string> | undefined {
+function stringHeaders(
+	headers: Record<string, string | null> | undefined,
+): Record<string, string> | undefined {
 	if (headers === undefined) return undefined;
-	return Object.fromEntries(Object.entries(headers).filter((entry): entry is [string, string] => entry[1] !== null));
+	return Object.fromEntries(
+		Object.entries(headers).filter(
+			(entry): entry is [string, string] => entry[1] !== null,
+		),
+	);
 }
 
-function operationSignal(parent: AbortSignal | undefined, timeoutMs: number): {
+function operationSignal(
+	parent: AbortSignal | undefined,
+	timeoutMs: number,
+): {
 	readonly cleanup: () => void;
 	readonly signal: AbortSignal;
 } {
@@ -80,7 +99,10 @@ function operationSignal(parent: AbortSignal | undefined, timeoutMs: number): {
 	if (parent?.aborted) relayAbort();
 	else parent?.addEventListener("abort", relayAbort, { once: true });
 	const timer = setTimeout(
-		() => controller.abort(new DOMException("Reducer model call timed out", "AbortError")),
+		() =>
+			controller.abort(
+				new DOMException("Reducer model call timed out", "AbortError"),
+			),
 		timeoutMs,
 	);
 	return {
@@ -92,7 +114,10 @@ function operationSignal(parent: AbortSignal | undefined, timeoutMs: number): {
 	};
 }
 
-function resolveReducerModel(config: ReducerConfig, registry: CompatibleModelRegistry): Model<Api> {
+function resolveReducerModel(
+	config: ReducerConfig,
+	registry: CompatibleModelRegistry,
+): Model<Api> {
 	const model = registry.find?.(config.reducerProvider, config.reducerModel);
 	if (!model) {
 		throw new ReducerModelUnavailableError(
@@ -121,7 +146,12 @@ export async function callReducer(
 			messages: [
 				{
 					role: "user" as const,
-					content: [{ type: "text" as const, text: reducerInput(command, isError, archive, body) }],
+					content: [
+						{
+							type: "text" as const,
+							text: reducerInput(command, isError, archive, body),
+						},
+					],
 					timestamp: Date.now(),
 				},
 			],
@@ -139,7 +169,9 @@ export async function callReducer(
 		} else {
 			const auth = await registry.getApiKeyAndHeaders(model);
 			if (!auth.ok) throw new Error(auth.error);
-			const legacyModel = auth.baseUrl ? { ...model, baseUrl: auth.baseUrl } : model;
+			const legacyModel = auth.baseUrl
+				? { ...model, baseUrl: auth.baseUrl }
+				: model;
 			const headers = stringHeaders(auth.headers);
 			response = await compatComplete(legacyModel, requestContext, {
 				...requestOptions,

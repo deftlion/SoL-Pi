@@ -5,22 +5,22 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import * as piCodingAgent from "@earendil-works/pi-coding-agent";
 import {
-	createAgentSession,
-	DefaultResourceLoader,
-	SessionManager,
-	SettingsManager,
-	type AgentSession,
-	type ExtensionFactory,
-} from "@earendil-works/pi-coding-agent";
-import {
+	type FauxResponseStep,
 	fauxAssistantMessage,
 	fauxProvider,
 	fauxText,
 	fauxToolCall,
-	type FauxResponseStep,
 } from "@earendil-works/pi-ai/providers/faux";
+import * as piCodingAgent from "@earendil-works/pi-coding-agent";
+import {
+	type AgentSession,
+	createAgentSession,
+	DefaultResourceLoader,
+	type ExtensionFactory,
+	SessionManager,
+	SettingsManager,
+} from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import {
 	BOUNDARY_COMPACTION_INSTRUCTIONS,
@@ -30,27 +30,43 @@ import {
 } from "../src/sol-pi/extensions/online-context-compact/extension.ts";
 import { ONLINE_STATE_ENTRY } from "../src/sol-pi/extensions/online-context-compact/state.ts";
 
-const OPEN = [{ id: "build", goal: "build it", status: "in_progress" }] as const;
+const OPEN = [
+	{ id: "build", goal: "build it", status: "in_progress" },
+] as const;
 const DONE = [{ id: "build", goal: "build it", status: "completed" }] as const;
 const PROGRESS = {
 	files_changed: ["src/a.ts"],
 	verification: ["tests passed"],
 	decisions: ["kept the implementation small"],
 };
-const DEFAULT_COMPACTION = { enabled: false, keepRecentTokens: 150, reserveTokens: 1_024 };
+const DEFAULT_COMPACTION = {
+	enabled: false,
+	keepRecentTokens: 150,
+	reserveTokens: 1_024,
+};
 
 /** Pi 1.0 codemode; Pi 0.84.2 does not ship it. */
-const createCodemodeExtension = (piCodingAgent as unknown as Record<string, unknown>).createCodemodeExtension as
+const createCodemodeExtension = (
+	piCodingAgent as unknown as Record<string, unknown>
+).createCodemodeExtension as
 	| ((options: { mode: "on" | "only" }) => ExtensionFactory)
 	| undefined;
 
 type CompactionRequest = { customInstructions?: string; reason: string };
-type ToolStart = { toolName: string; toolCallId: string; parentToolCallId?: string };
+type ToolStart = {
+	toolName: string;
+	toolCallId: string;
+	parentToolCallId?: string;
+};
 type ScenarioOptions = {
 	readonly name: string;
 	readonly responses: FauxResponseStep[];
 	readonly contextWindow?: number;
-	readonly compaction?: { enabled: boolean; keepRecentTokens: number; reserveTokens: number };
+	readonly compaction?: {
+		enabled: boolean;
+		keepRecentTokens: number;
+		reserveTokens: number;
+	};
 	readonly settings?: Record<string, unknown>;
 	readonly tools?: string[];
 	readonly extensions?: ExtensionFactory[];
@@ -68,7 +84,10 @@ type ScenarioRun = {
 	readonly settledCount: () => number;
 };
 
-async function withScenario(options: ScenarioOptions, body: (run: ScenarioRun) => Promise<void>): Promise<void> {
+async function withScenario(
+	options: ScenarioOptions,
+	body: (run: ScenarioRun) => Promise<void>,
+): Promise<void> {
 	const cwd = await mkdtemp(join(tmpdir(), "sol-pi-occ-session-"));
 	const agentDir = join(cwd, "agent");
 	await mkdir(agentDir);
@@ -78,7 +97,13 @@ async function withScenario(options: ScenarioOptions, body: (run: ScenarioRun) =
 		const faux = fauxProvider({
 			provider: `sol-pi-occ-${options.name}`,
 			api: `sol-pi-occ-api-${options.name}`,
-			models: [{ id: `sol-pi-occ-model-${options.name}`, contextWindow: options.contextWindow ?? 4_096, maxTokens: 1_024 }],
+			models: [
+				{
+					id: `sol-pi-occ-model-${options.name}`,
+					contextWindow: options.contextWindow ?? 4_096,
+					maxTokens: 1_024,
+				},
+			],
 		});
 		faux.setResponses(options.responses);
 
@@ -87,12 +112,18 @@ async function withScenario(options: ScenarioOptions, body: (run: ScenarioRun) =
 		// Registered before Online Context Compact, so it also sees requests that extension cancels.
 		const recorder: ExtensionFactory = (pi) => {
 			pi.on("session_before_compact", (event) => {
-				compactionRequests.push({ customInstructions: event.customInstructions, reason: event.reason });
+				compactionRequests.push({
+					customInstructions: event.customInstructions,
+					reason: event.reason,
+				});
 			});
 		};
 		const extension: ExtensionFactory = (pi) => {
 			pi.registerProvider(faux.provider);
-			createOnlineContextCompactExtension({ cacheWriteReadRatio: 0, keepRecentTokens: compaction.keepRecentTokens })(pi);
+			createOnlineContextCompactExtension({
+				cacheWriteReadRatio: 0,
+				keepRecentTokens: compaction.keepRecentTokens,
+			})(pi);
 			if (options.providerSummary) return;
 			pi.on("session_before_compact", (event) => ({
 				compaction: {
@@ -111,18 +142,31 @@ async function withScenario(options: ScenarioOptions, body: (run: ScenarioRun) =
 		const sessionManager = SessionManager.inMemory(cwd);
 		sessionManager.appendMessage({
 			role: "user",
-			content: [{ type: "text", text: `historical request ${"x".repeat(6_000)}` }],
+			content: [
+				{ type: "text", text: `historical request ${"x".repeat(6_000)}` },
+			],
 			timestamp: Date.now() - 2,
 		});
-		sessionManager.appendMessage(fauxAssistantMessage(`historical response ${"y".repeat(6_000)}`));
+		sessionManager.appendMessage(
+			fauxAssistantMessage(`historical response ${"y".repeat(6_000)}`),
+		);
 		const resourceLoader = new DefaultResourceLoader({
 			cwd,
 			agentDir,
 			settingsManager,
 			extensionFactories: [
-				{ name: `online-context-compact-recorder-${options.name}`, factory: recorder },
-				{ name: `online-context-compact-session-test-${options.name}`, factory: extension },
-				...(options.extensions ?? []).map((factory, index) => ({ name: `extra-${options.name}-${index}`, factory })),
+				{
+					name: `online-context-compact-recorder-${options.name}`,
+					factory: recorder,
+				},
+				{
+					name: `online-context-compact-session-test-${options.name}`,
+					factory: extension,
+				},
+				...(options.extensions ?? []).map((factory, index) => ({
+					name: `extra-${options.name}-${index}`,
+					factory,
+				})),
 			],
 			noExtensions: true,
 			noSkills: true,
@@ -146,14 +190,18 @@ async function withScenario(options: ScenarioOptions, body: (run: ScenarioRun) =
 		});
 		session = created.session;
 		const extensionErrors: string[] = [];
-		session.extensionRunner.onError((error) => extensionErrors.push(`${error.event}: ${error.error}`));
+		session.extensionRunner.onError((error) =>
+			extensionErrors.push(`${error.event}: ${error.error}`),
+		);
 		let settledCount = 0;
 		const compactionEnds: string[] = [];
 		const toolStarts: ToolStart[] = [];
 		session.subscribe((event) => {
 			if (event.type === "agent_settled") settledCount++;
 			if (event.type === "compaction_end") {
-				compactionEnds.push(`${event.reason}${event.aborted ? ":aborted" : ""}`);
+				compactionEnds.push(
+					`${event.reason}${event.aborted ? ":aborted" : ""}`,
+				);
 			}
 			if (event.type === "tool_execution_start") {
 				const { parentToolCallId } = event as { parentToolCallId?: string };
@@ -188,12 +236,26 @@ async function withScenario(options: ScenarioOptions, body: (run: ScenarioRun) =
 	}
 }
 
-function boundaryResponses(ordinal: number, workText?: string): FauxResponseStep[] {
-	const openPlan = fauxToolCall("update_plan", { steps: OPEN }, { id: `plan-open-${ordinal}` });
+function boundaryResponses(
+	ordinal: number,
+	workText?: string,
+): FauxResponseStep[] {
+	const openPlan = fauxToolCall(
+		"update_plan",
+		{ steps: OPEN },
+		{ id: `plan-open-${ordinal}` },
+	);
 	return [
-		fauxAssistantMessage(workText === undefined ? openPlan : [fauxText(workText), openPlan], { stopReason: "toolUse" }),
 		fauxAssistantMessage(
-			fauxToolCall("update_plan", { steps: DONE, progress: PROGRESS }, { id: `plan-done-${ordinal}` }),
+			workText === undefined ? openPlan : [fauxText(workText), openPlan],
+			{ stopReason: "toolUse" },
+		),
+		fauxAssistantMessage(
+			fauxToolCall(
+				"update_plan",
+				{ steps: DONE, progress: PROGRESS },
+				{ id: `plan-done-${ordinal}` },
+			),
 			{ stopReason: "toolUse" },
 		),
 	];
@@ -213,17 +275,26 @@ function slowFinalReply(text: string): FauxResponseStep {
 function withPayloadHook(step: FauxResponseStep): FauxResponseStep {
 	return async (context, options, state, model) => {
 		await options?.onPayload?.({ messages: context.messages }, model);
-		return typeof step === "function" ? await step(context, options, state, model) : step;
+		return typeof step === "function"
+			? await step(context, options, state, model)
+			: step;
 	};
 }
 
 /** The latest Online Context Compact state entry. */
-function onlineState(sessionManager: SessionManager): Record<string, unknown> | undefined {
+function onlineState(
+	sessionManager: SessionManager,
+): Record<string, unknown> | undefined {
 	const states = sessionManager
 		.getEntries()
-		.filter((entry) => entry.type === "custom" && entry.customType === ONLINE_STATE_ENTRY);
+		.filter(
+			(entry) =>
+				entry.type === "custom" && entry.customType === ONLINE_STATE_ENTRY,
+		);
 	const latest = states.at(-1);
-	return latest?.type === "custom" ? (latest.data as Record<string, unknown>) : undefined;
+	return latest?.type === "custom"
+		? (latest.data as Record<string, unknown>)
+		: undefined;
 }
 
 function reminders(sessionManager: SessionManager, content: string): number {
@@ -243,45 +314,61 @@ type DeclaredTool = { readonly name: string; readonly description: string };
 /** Tools declared to the model by Pi 1.0 system messages, after any loadout hook hid some. */
 function declaredTools(context: unknown): DeclaredTool[] {
 	const declared = new Map<string, DeclaredTool>();
-	for (const message of (context as { messages?: readonly unknown[] }).messages ?? []) {
+	for (const message of (context as { messages?: readonly unknown[] })
+		.messages ?? []) {
 		const system = message as {
 			role?: string;
 			toolsAdded?: readonly DeclaredTool[];
 			toolsRemoved?: readonly (string | { name: string })[];
 		};
 		if (system.role !== "system") continue;
-		for (const tool of system.toolsRemoved ?? []) declared.delete(typeof tool === "string" ? tool : tool.name);
+		for (const tool of system.toolsRemoved ?? [])
+			declared.delete(typeof tool === "string" ? tool : tool.name);
 		for (const tool of system.toolsAdded ?? []) declared.set(tool.name, tool);
 	}
 	return [...declared.values()];
 }
 
 function compactions(sessionManager: SessionManager): number {
-	return sessionManager.getBranch().filter((entry) => entry.type === "compaction").length;
+	return sessionManager
+		.getBranch()
+		.filter((entry) => entry.type === "compaction").length;
 }
 
-async function runCompactionScenario(requestedCompactions: 1 | 2): Promise<void> {
+async function runCompactionScenario(
+	requestedCompactions: 1 | 2,
+): Promise<void> {
 	const finalReply = `final reply after ${requestedCompactions} online compaction${requestedCompactions === 1 ? "" : "s"}`;
 	const responses: FauxResponseStep[] = [];
 	for (let ordinal = 1; ordinal <= requestedCompactions; ordinal++) {
-		responses.push(...boundaryResponses(ordinal, ordinal === 1 ? undefined : `second phase work ${"z".repeat(6_000)}`));
+		responses.push(
+			...boundaryResponses(
+				ordinal,
+				ordinal === 1 ? undefined : `second phase work ${"z".repeat(6_000)}`,
+			),
+		);
 	}
 	responses.push(slowFinalReply(finalReply));
 
-	await withScenario({ name: `boundary-${requestedCompactions}`, responses }, async (run) => {
-		expect(run.extensionErrors).toEqual([]);
-		expect(run.compactionRequests).toEqual(
-			Array.from({ length: requestedCompactions }, () => ({
-				customInstructions: BOUNDARY_COMPACTION_INSTRUCTIONS,
-				reason: "manual",
-			})),
-		);
-		expect(compactions(run.sessionManager)).toBe(requestedCompactions);
-		expect(reminders(run.sessionManager, POST_COMPACTION_PLAN_REMINDER)).toBe(requestedCompactions);
-		expect(run.faux.state.callCount).toBe(requestedCompactions * 2 + 1);
-		expect(run.session.getLastAssistantText()).toBe(finalReply);
-		expect(run.settledCount()).toBe(requestedCompactions + 1);
-	});
+	await withScenario(
+		{ name: `boundary-${requestedCompactions}`, responses },
+		async (run) => {
+			expect(run.extensionErrors).toEqual([]);
+			expect(run.compactionRequests).toEqual(
+				Array.from({ length: requestedCompactions }, () => ({
+					customInstructions: BOUNDARY_COMPACTION_INSTRUCTIONS,
+					reason: "manual",
+				})),
+			);
+			expect(compactions(run.sessionManager)).toBe(requestedCompactions);
+			expect(reminders(run.sessionManager, POST_COMPACTION_PLAN_REMINDER)).toBe(
+				requestedCompactions,
+			);
+			expect(run.faux.state.callCount).toBe(requestedCompactions * 2 + 1);
+			expect(run.session.getLastAssistantText()).toBe(finalReply);
+			expect(run.settledCount()).toBe(requestedCompactions + 1);
+		},
+	);
 }
 
 describe("Online Context Compact with a real AgentSession", () => {
@@ -295,64 +382,123 @@ describe("Online Context Compact with a real AgentSession", () => {
 
 	for (const rekey of [false, true]) {
 		it(`compacts once after repeated ${rekey ? "re-keyed" : "identical"} completed plans past the cooldown`, async () => {
-			const reissued = Array.from({ length: 3 }, (_, index) => [{
-				id: rekey ? `restated-${index}` : "build",
-				goal: rekey ? `build it (restated ${index})` : "build it",
-				status: "completed",
-			}]);
+			const reissued = Array.from({ length: 3 }, (_, index) => [
+				{
+					id: rekey ? `restated-${index}` : "build",
+					goal: rekey ? `build it (restated ${index})` : "build it",
+					status: "completed",
+				},
+			]);
 			const finalReply = `final after ${rekey ? "re-keyed" : "identical"} restatements`;
 			const responses: FauxResponseStep[] = [
 				...boundaryResponses(1),
-				...reissued.map((steps, index) => fauxAssistantMessage(
-					fauxToolCall("update_plan", { steps }, { id: `reissue-${index}` }),
-					{ stopReason: "toolUse" },
-				)),
+				...reissued.map((steps, index) =>
+					fauxAssistantMessage(
+						fauxToolCall("update_plan", { steps }, { id: `reissue-${index}` }),
+						{ stopReason: "toolUse" },
+					),
+				),
 				slowFinalReply(finalReply),
 			];
-			await withScenario({ name: `restatement-${rekey}`, responses: responses.map(withPayloadHook) }, async (run) => {
-				expect(run.extensionErrors).toEqual([]);
-				expect(run.compactionRequests).toEqual([
-					{ customInstructions: BOUNDARY_COMPACTION_INSTRUCTIONS, reason: "manual" },
-				]);
-				expect(compactions(run.sessionManager)).toBe(1);
-				expect(reminders(run.sessionManager, POST_COMPACTION_PLAN_REMINDER)).toBe(1);
-				expect(run.faux.state.callCount).toBe(6);
-				expect(onlineState(run.sessionManager)).toMatchObject({
-					requestCount: 6,
-					nativeCompactionCount: 1,
-					completedBoundaryRequestCounts: [2],
-				});
-				expect(run.session.getLastAssistantText()).toBe(finalReply);
-				expect(run.settledCount()).toBe(2);
-			});
+			await withScenario(
+				{
+					name: `restatement-${rekey}`,
+					responses: responses.map(withPayloadHook),
+				},
+				async (run) => {
+					expect(run.extensionErrors).toEqual([]);
+					expect(run.compactionRequests).toEqual([
+						{
+							customInstructions: BOUNDARY_COMPACTION_INSTRUCTIONS,
+							reason: "manual",
+						},
+					]);
+					expect(compactions(run.sessionManager)).toBe(1);
+					expect(
+						reminders(run.sessionManager, POST_COMPACTION_PLAN_REMINDER),
+					).toBe(1);
+					expect(run.faux.state.callCount).toBe(6);
+					expect(onlineState(run.sessionManager)).toMatchObject({
+						requestCount: 6,
+						nativeCompactionCount: 1,
+						completedBoundaryRequestCounts: [2],
+					});
+					expect(run.session.getLastAssistantText()).toBe(finalReply);
+					expect(run.settledCount()).toBe(2);
+				},
+			);
 		}, 10_000);
 	}
 
 	it("records genuine progress on the first plan update after native compaction", async () => {
-		const verify = { id: "verify", goal: "verify it", status: "pending" } as const;
+		const verify = {
+			id: "verify",
+			goal: "verify it",
+			status: "pending",
+		} as const;
 		const completed = [DONE[0], { ...verify, status: "completed" }] as const;
 		const responses: FauxResponseStep[] = [
-			fauxAssistantMessage(fauxToolCall("update_plan", { steps: [...OPEN, verify] }, { id: "open-two" }), { stopReason: "toolUse" }),
-			fauxAssistantMessage(fauxToolCall("update_plan", { steps: [...DONE, verify], progress: PROGRESS }, { id: "first-done" }), { stopReason: "toolUse" }),
+			fauxAssistantMessage(
+				fauxToolCall(
+					"update_plan",
+					{ steps: [...OPEN, verify] },
+					{ id: "open-two" },
+				),
+				{ stopReason: "toolUse" },
+			),
+			fauxAssistantMessage(
+				fauxToolCall(
+					"update_plan",
+					{ steps: [...DONE, verify], progress: PROGRESS },
+					{ id: "first-done" },
+				),
+				{ stopReason: "toolUse" },
+			),
 			// No redundant plan-restatement call precedes this real completion.
-			fauxAssistantMessage(fauxToolCall("update_plan", { steps: completed, progress: PROGRESS }, { id: "second-done" }), { stopReason: "toolUse" }),
+			fauxAssistantMessage(
+				fauxToolCall(
+					"update_plan",
+					{ steps: completed, progress: PROGRESS },
+					{ id: "second-done" },
+				),
+				{ stopReason: "toolUse" },
+			),
 			slowFinalReply("final after genuine progress"),
 		];
-		await withScenario({ name: "first-real-progress", responses: responses.map(withPayloadHook) }, async (run) => {
-			expect(run.extensionErrors).toEqual([]);
-			expect(onlineState(run.sessionManager)).toMatchObject({
-				plan: completed,
-				completedBoundaryRequestCounts: [2, 1],
-				requestCount: 4,
-			});
-			const result = run.sessionManager.getBranch().find((entry) =>
-				entry.type === "message" && entry.message.role === "toolResult" && entry.message.toolCallId === "second-done",
-			);
-			expect(result).toMatchObject({ message: { details: {
-				boundary: true, completed_step_ids: ["verify"], progress_recorded: true,
-			} } });
-			expect(run.session.getLastAssistantText()).toBe("final after genuine progress");
-		});
+		await withScenario(
+			{
+				name: "first-real-progress",
+				responses: responses.map(withPayloadHook),
+			},
+			async (run) => {
+				expect(run.extensionErrors).toEqual([]);
+				expect(onlineState(run.sessionManager)).toMatchObject({
+					plan: completed,
+					completedBoundaryRequestCounts: [2, 1],
+					requestCount: 4,
+				});
+				const result = run.sessionManager
+					.getBranch()
+					.find(
+						(entry) =>
+							entry.type === "message" &&
+							entry.message.role === "toolResult" &&
+							entry.message.toolCallId === "second-done",
+					);
+				expect(result).toMatchObject({
+					message: {
+						details: {
+							boundary: true,
+							completed_step_ids: ["verify"],
+							progress_recorded: true,
+						},
+					},
+				});
+				expect(run.session.getLastAssistantText()).toBe(
+					"final after genuine progress",
+				);
+			},
+		);
 	}, 10_000);
 
 	it("counts each provider request once across consecutive boundary compactions", async () => {
@@ -364,7 +510,9 @@ describe("Online Context Compact with a real AgentSession", () => {
 		await withScenario({ name: "request-count", responses }, async (run) => {
 			expect(run.extensionErrors).toEqual([]);
 			expect(compactions(run.sessionManager)).toBe(2);
-			expect(run.session.getLastAssistantText()).toBe("final after counted requests");
+			expect(run.session.getLastAssistantText()).toBe(
+				"final after counted requests",
+			);
 			// Each boundary stop makes Pi build one more request whose run is already aborted; it never
 			// reaches the provider and is not counted.
 			expect(run.faux.state.callCount).toBe(5);
@@ -376,17 +524,30 @@ describe("Online Context Compact with a real AgentSession", () => {
 	}, 10_000);
 
 	it("keeps its selected boundary compaction when Pi's threshold compaction is enabled", async () => {
-		const done = fauxToolCall("update_plan", { steps: DONE, progress: PROGRESS }, { id: "plan-done" });
+		const done = fauxToolCall(
+			"update_plan",
+			{ steps: DONE, progress: PROGRESS },
+			{ id: "plan-done" },
+		);
 		await withScenario(
 			{
 				name: "threshold",
 				contextWindow: 10_000,
-				compaction: { enabled: true, keepRecentTokens: 150, reserveTokens: 2_000 },
+				compaction: {
+					enabled: true,
+					keepRecentTokens: 150,
+					reserveTokens: 2_000,
+				},
 				responses: [
-					fauxAssistantMessage(fauxToolCall("update_plan", { steps: OPEN }, { id: "plan-open" }), {
+					fauxAssistantMessage(
+						fauxToolCall("update_plan", { steps: OPEN }, { id: "plan-open" }),
+						{
+							stopReason: "toolUse",
+						},
+					),
+					fauxAssistantMessage([fauxText("w".repeat(22_000)), done], {
 						stopReason: "toolUse",
 					}),
-					fauxAssistantMessage([fauxText("w".repeat(22_000)), done], { stopReason: "toolUse" }),
 					fauxAssistantMessage("final after threshold"),
 					fauxAssistantMessage("unexpected extra request"),
 				],
@@ -396,13 +557,24 @@ describe("Online Context Compact with a real AgentSession", () => {
 				// Pi attempts its own threshold compaction for the stopped run: 0.84.4+ before the run's next
 				// request, 0.84.2 after the run because the aborted faux request ends with an error stop.
 				expect(run.compactionEnds).toEqual(["threshold:aborted", "manual"]);
-				expect(run.compactionRequests.filter((request) => request.reason !== "threshold")).toEqual([
-					{ customInstructions: BOUNDARY_COMPACTION_INSTRUCTIONS, reason: "manual" },
+				expect(
+					run.compactionRequests.filter(
+						(request) => request.reason !== "threshold",
+					),
+				).toEqual([
+					{
+						customInstructions: BOUNDARY_COMPACTION_INSTRUCTIONS,
+						reason: "manual",
+					},
 				]);
 				expect(compactions(run.sessionManager)).toBe(1);
-				expect(reminders(run.sessionManager, POST_COMPACTION_PLAN_REMINDER)).toBe(1);
+				expect(
+					reminders(run.sessionManager, POST_COMPACTION_PLAN_REMINDER),
+				).toBe(1);
 				expect(run.faux.state.callCount).toBe(3);
-				expect(run.session.getLastAssistantText()).toBe("final after threshold");
+				expect(run.session.getLastAssistantText()).toBe(
+					"final after threshold",
+				);
 			},
 		);
 	}, 10_000);
@@ -414,40 +586,63 @@ describe("Online Context Compact with a real AgentSession", () => {
 				providerSummary: true,
 				responses: [
 					...boundaryResponses(1),
-					fauxAssistantMessage("", { stopReason: "error", errorMessage: "summary provider unavailable" }),
+					fauxAssistantMessage("", {
+						stopReason: "error",
+						errorMessage: "summary provider unavailable",
+					}),
 					slowFinalReply("final after failed compaction"),
 				],
 			},
 			async (run) => {
 				expect(run.compactionRequests).toEqual([
-					{ customInstructions: BOUNDARY_COMPACTION_INSTRUCTIONS, reason: "manual" },
+					{
+						customInstructions: BOUNDARY_COMPACTION_INSTRUCTIONS,
+						reason: "manual",
+					},
 				]);
 				expect(compactions(run.sessionManager)).toBe(0);
-				expect(reminders(run.sessionManager, POST_COMPACTION_PLAN_REMINDER)).toBe(0);
-				expect(reminders(run.sessionManager, COMPACTION_FAILED_RESUME_REMINDER)).toBe(1);
-				expect(run.session.getLastAssistantText()).toBe("final after failed compaction");
+				expect(
+					reminders(run.sessionManager, POST_COMPACTION_PLAN_REMINDER),
+				).toBe(0);
+				expect(
+					reminders(run.sessionManager, COMPACTION_FAILED_RESUME_REMINDER),
+				).toBe(1);
+				expect(run.session.getLastAssistantText()).toBe(
+					"final after failed compaction",
+				);
 				expect(run.faux.state.callCount).toBe(4);
 				// The failure itself is still reported once.
 				expect(run.extensionErrors).toHaveLength(1);
-				expect(run.extensionErrors[0]).toMatch(/^agent_settled: .*summary provider unavailable/u);
+				expect(run.extensionErrors[0]).toMatch(
+					/^agent_settled: .*summary provider unavailable/u,
+				);
 			},
 		);
 	}, 10_000);
 
 	it("resumes after a failed boundary compaction when Pi's threshold compaction is enabled", async () => {
-		const done = fauxToolCall("update_plan", { steps: DONE, progress: PROGRESS }, { id: "plan-done" });
+		const done = fauxToolCall(
+			"update_plan",
+			{ steps: DONE, progress: PROGRESS },
+			{ id: "plan-done" },
+		);
 		let resumeRequests = 0;
 		// Pi 1.2+ checks its threshold before the resumed run's first request, so its own compaction runs
 		// before the continuation; Pi 1.0.4 runs it after the continuation. Answer summaries and the
 		// continuation by content so both orders are covered.
 		const answer: FauxResponseStep = async (context) => {
 			const last = context.messages.at(-1);
-			const text = last?.role === "user" && Array.isArray(last.content)
-				? last.content.map((part) => (part.type === "text" ? part.text : "")).join("")
-				: "";
+			const text =
+				last?.role === "user" && Array.isArray(last.content)
+					? last.content
+							.map((part) => (part.type === "text" ? part.text : ""))
+							.join("")
+					: "";
 			if (text === COMPACTION_FAILED_RESUME_REMINDER) {
 				resumeRequests++;
-				return fauxAssistantMessage("final after failed compaction under threshold");
+				return fauxAssistantMessage(
+					"final after failed compaction under threshold",
+				);
 			}
 			return fauxAssistantMessage(`threshold summary ${"t".repeat(200)}`);
 		};
@@ -456,13 +651,25 @@ describe("Online Context Compact with a real AgentSession", () => {
 				name: "failed-threshold",
 				providerSummary: true,
 				contextWindow: 10_000,
-				compaction: { enabled: true, keepRecentTokens: 150, reserveTokens: 2_000 },
+				compaction: {
+					enabled: true,
+					keepRecentTokens: 150,
+					reserveTokens: 2_000,
+				},
 				responses: [
-					fauxAssistantMessage(fauxToolCall("update_plan", { steps: OPEN }, { id: "plan-open" }), {
+					fauxAssistantMessage(
+						fauxToolCall("update_plan", { steps: OPEN }, { id: "plan-open" }),
+						{
+							stopReason: "toolUse",
+						},
+					),
+					fauxAssistantMessage([fauxText("w".repeat(22_000)), done], {
 						stopReason: "toolUse",
 					}),
-					fauxAssistantMessage([fauxText("w".repeat(22_000)), done], { stopReason: "toolUse" }),
-					fauxAssistantMessage("", { stopReason: "error", errorMessage: "summary provider unavailable" }),
+					fauxAssistantMessage("", {
+						stopReason: "error",
+						errorMessage: "summary provider unavailable",
+					}),
 					answer,
 					answer,
 					answer,
@@ -471,102 +678,158 @@ describe("Online Context Compact with a real AgentSession", () => {
 			},
 			async (run) => {
 				// The boundary compaction fails; Pi's own threshold compaction then succeeds.
-				expect(run.compactionEnds).toEqual(["threshold:aborted", "manual", "threshold"]);
+				expect(run.compactionEnds).toEqual([
+					"threshold:aborted",
+					"manual",
+					"threshold",
+				]);
 				expect(compactions(run.sessionManager)).toBe(1);
-				expect(reminders(run.sessionManager, POST_COMPACTION_PLAN_REMINDER)).toBe(0);
-				expect(reminders(run.sessionManager, COMPACTION_FAILED_RESUME_REMINDER)).toBe(1);
+				expect(
+					reminders(run.sessionManager, POST_COMPACTION_PLAN_REMINDER),
+				).toBe(0);
+				expect(
+					reminders(run.sessionManager, COMPACTION_FAILED_RESUME_REMINDER),
+				).toBe(1);
 				// Pi's compaction keeps the resume reminder, so the model still sees it and continues once.
 				expect(resumeRequests).toBe(1);
-				expect(run.session.getLastAssistantText()).toBe("final after failed compaction under threshold");
+				expect(run.session.getLastAssistantText()).toBe(
+					"final after failed compaction under threshold",
+				);
 				expect(run.faux.state.callCount).toBe(6);
 				expect(run.settledCount()).toBe(2);
 				expect(run.extensionErrors).toHaveLength(1);
-				expect(run.extensionErrors[0]).toMatch(/^agent_settled: .*summary provider unavailable/u);
+				expect(run.extensionErrors[0]).toMatch(
+					/^agent_settled: .*summary provider unavailable/u,
+				);
 			},
 		);
 	}, 10_000);
 });
 
-describe.skipIf(createCodemodeExtension === undefined)("Online Context Compact with Pi codemode", () => {
-	for (const mode of ["on", "only"] as const) {
-		it(`keeps update_plan model-only and compacts at a direct boundary in codemode "${mode}" mode`, async () => {
-			const scriptAttempt = [
-				"try {",
-				`  await tools.update_plan({ steps: ${JSON.stringify(DONE)} });`,
-				'  text("update_plan resolved");',
-				"} catch (error) {",
-				'  text("update_plan unavailable: " + String(error && error.message));',
-				"}",
-				'text("tools: " + Object.keys(tools).sort().join(","));',
-			].join("\n");
-			let firstRequest:
-				| { declared: string[]; codemodeDescription: string; readDescription: string; updatePlanDescription: string }
-				| undefined;
-			let scriptOutput = "";
-			const route = (step: FauxResponseStep): FauxResponseStep =>
-				async (context, options, state, model) => {
-					if (!firstRequest) {
-						const tools = declaredTools(context);
-						firstRequest = {
-							declared: tools.map((tool) => tool.name).sort(),
-							codemodeDescription: tools.find((tool) => tool.name === "codemode")?.description ?? "",
-							readDescription: tools.find((tool) => tool.name === "read")?.description ?? "",
-							updatePlanDescription: tools.find((tool) => tool.name === "update_plan")?.description ?? "",
-						};
-					}
-					const last = context.messages.at(-1);
-					if (last?.role === "toolResult" && last.toolName === "codemode") {
-						scriptOutput = last.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
-					}
-					return typeof step === "function" ? await step(context, options, state, model) : step;
-				};
+describe.skipIf(createCodemodeExtension === undefined)(
+	"Online Context Compact with Pi codemode",
+	() => {
+		for (const mode of ["on", "only"] as const) {
+			it(`keeps update_plan model-only and compacts at a direct boundary in codemode "${mode}" mode`, async () => {
+				const scriptAttempt = [
+					"try {",
+					`  await tools.update_plan({ steps: ${JSON.stringify(DONE)} });`,
+					'  text("update_plan resolved");',
+					"} catch (error) {",
+					'  text("update_plan unavailable: " + String(error && error.message));',
+					"}",
+					'text("tools: " + Object.keys(tools).sort().join(","));',
+				].join("\n");
+				let firstRequest:
+					| {
+							declared: string[];
+							codemodeDescription: string;
+							readDescription: string;
+							updatePlanDescription: string;
+					  }
+					| undefined;
+				let scriptOutput = "";
+				const route =
+					(step: FauxResponseStep): FauxResponseStep =>
+					async (context, options, state, model) => {
+						if (!firstRequest) {
+							const tools = declaredTools(context);
+							firstRequest = {
+								declared: tools.map((tool) => tool.name).sort(),
+								codemodeDescription:
+									tools.find((tool) => tool.name === "codemode")?.description ??
+									"",
+								readDescription:
+									tools.find((tool) => tool.name === "read")?.description ?? "",
+								updatePlanDescription:
+									tools.find((tool) => tool.name === "update_plan")
+										?.description ?? "",
+							};
+						}
+						const last = context.messages.at(-1);
+						if (last?.role === "toolResult" && last.toolName === "codemode") {
+							scriptOutput = last.content
+								.map((part) => (part.type === "text" ? part.text : ""))
+								.join("\n");
+						}
+						return typeof step === "function"
+							? await step(context, options, state, model)
+							: step;
+					};
 
-			await withScenario(
-				{
-					name: `codemode-${mode}`,
-					tools: ["read", "update_plan", "codemode"],
-					settings: { defaultTools: ["+codemode"], codemode: { mode } },
-					extensions: [createCodemodeExtension!({ mode })],
-					responses: [
-						fauxAssistantMessage(fauxToolCall("codemode", { code: scriptAttempt }, { id: "script-1" }), {
-							stopReason: "toolUse",
-						}),
-						...boundaryResponses(1),
-						slowFinalReply(`final after codemode ${mode}`),
-					].map((step) => route(withPayloadHook(step))),
-				},
-				async (run) => {
-					expect(run.extensionErrors).toEqual([]);
-					// update_plan stays declared to the model, and codemode never offers it to scripts.
-					expect(firstRequest?.declared).toContain("codemode");
-					expect(firstRequest?.declared).toContain("update_plan");
-					expect(firstRequest?.declared.includes("read")).toBe(mode === "on");
-					expect(firstRequest?.codemodeDescription).not.toMatch(/update_plan/u);
-					expect(firstRequest?.updatePlanDescription).not.toMatch(/tools\.update_plan/u);
-					// A direct tool, for contrast: described as script-callable ("on") or listed by codemode ("only").
-					if (mode === "on") expect(firstRequest?.readDescription).toMatch(/tools\.read\(/u);
-					else expect(firstRequest?.codemodeDescription).toMatch(/### `read`/u);
-					expect(scriptOutput).toMatch(/update_plan unavailable/u);
-					expect(scriptOutput).not.toMatch(/update_plan resolved/u);
-					expect(scriptOutput).not.toMatch(/tools: .*update_plan/u);
-					expect(run.toolStarts.filter((start) => start.toolName === "update_plan")).toEqual([
-						{ toolName: "update_plan", toolCallId: "plan-open-1" },
-						{ toolName: "update_plan", toolCallId: "plan-done-1" },
-					]);
+				await withScenario(
+					{
+						name: `codemode-${mode}`,
+						tools: ["read", "update_plan", "codemode"],
+						settings: { defaultTools: ["+codemode"], codemode: { mode } },
+						extensions: [createCodemodeExtension!({ mode })],
+						responses: [
+							fauxAssistantMessage(
+								fauxToolCall(
+									"codemode",
+									{ code: scriptAttempt },
+									{ id: "script-1" },
+								),
+								{
+									stopReason: "toolUse",
+								},
+							),
+							...boundaryResponses(1),
+							slowFinalReply(`final after codemode ${mode}`),
+						].map((step) => route(withPayloadHook(step))),
+					},
+					async (run) => {
+						expect(run.extensionErrors).toEqual([]);
+						// update_plan stays declared to the model, and codemode never offers it to scripts.
+						expect(firstRequest?.declared).toContain("codemode");
+						expect(firstRequest?.declared).toContain("update_plan");
+						expect(firstRequest?.declared.includes("read")).toBe(mode === "on");
+						expect(firstRequest?.codemodeDescription).not.toMatch(
+							/update_plan/u,
+						);
+						expect(firstRequest?.updatePlanDescription).not.toMatch(
+							/tools\.update_plan/u,
+						);
+						// A direct tool, for contrast: described as script-callable ("on") or listed by codemode ("only").
+						if (mode === "on")
+							expect(firstRequest?.readDescription).toMatch(/tools\.read\(/u);
+						else
+							expect(firstRequest?.codemodeDescription).toMatch(/### `read`/u);
+						expect(scriptOutput).toMatch(/update_plan unavailable/u);
+						expect(scriptOutput).not.toMatch(/update_plan resolved/u);
+						expect(scriptOutput).not.toMatch(/tools: .*update_plan/u);
+						expect(
+							run.toolStarts.filter(
+								(start) => start.toolName === "update_plan",
+							),
+						).toEqual([
+							{ toolName: "update_plan", toolCallId: "plan-open-1" },
+							{ toolName: "update_plan", toolCallId: "plan-done-1" },
+						]);
 
-					// The direct boundary compacts and the continuation runs.
-					expect(run.compactionRequests).toEqual([
-						{ customInstructions: BOUNDARY_COMPACTION_INSTRUCTIONS, reason: "manual" },
-					]);
-					expect(compactions(run.sessionManager)).toBe(1);
-					expect(reminders(run.sessionManager, POST_COMPACTION_PLAN_REMINDER)).toBe(1);
-					expect(run.faux.state.callCount).toBe(4);
-					expect(run.session.getLastAssistantText()).toBe(`final after codemode ${mode}`);
-					expect(run.settledCount()).toBe(2);
-					// The codemode script runs inside one request; every provider request is counted once.
-					expect(onlineState(run.sessionManager)).toMatchObject({ requestCount: 4 });
-				},
-			);
-		}, 20_000);
-	}
-});
+						// The direct boundary compacts and the continuation runs.
+						expect(run.compactionRequests).toEqual([
+							{
+								customInstructions: BOUNDARY_COMPACTION_INSTRUCTIONS,
+								reason: "manual",
+							},
+						]);
+						expect(compactions(run.sessionManager)).toBe(1);
+						expect(
+							reminders(run.sessionManager, POST_COMPACTION_PLAN_REMINDER),
+						).toBe(1);
+						expect(run.faux.state.callCount).toBe(4);
+						expect(run.session.getLastAssistantText()).toBe(
+							`final after codemode ${mode}`,
+						);
+						expect(run.settledCount()).toBe(2);
+						// The codemode script runs inside one request; every provider request is counted once.
+						expect(onlineState(run.sessionManager)).toMatchObject({
+							requestCount: 4,
+						});
+					},
+				);
+			}, 20_000);
+		}
+	},
+);

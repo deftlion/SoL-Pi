@@ -7,11 +7,17 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AssistantMessage, Context, Model } from "@earendil-works/pi-ai";
-import type { ExtensionContext, ToolResultEvent } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionContext,
+	ToolResultEvent,
+} from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_CONFIG } from "../src/sol-pi/config.ts";
 import { REDUCER_RECEIPT_SCHEMA } from "../src/sol-pi/extensions/evidence-preserving-reducer/index.ts";
-import { createSolPiExtension, registerConfiguredFeatures } from "../src/sol-pi/index.ts";
+import {
+	createSolPiExtension,
+	registerConfiguredFeatures,
+} from "../src/sol-pi/index.ts";
 import { FakePi, fakeContext } from "./helpers.ts";
 
 const CUSTOM_REDUCER = {
@@ -29,9 +35,12 @@ const CUSTOM_REDUCER = {
 
 function contextInput(context: Context): string {
 	const message = context.messages[0];
-	if (message?.role !== "user") throw new Error("reducer request omitted its user message");
+	if (message?.role !== "user")
+		throw new Error("reducer request omitted its user message");
 	if (typeof message.content === "string") return message.content;
-	return message.content.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("\n");
+	return message.content
+		.flatMap((item) => (item.type === "text" ? [item.text] : []))
+		.join("\n");
 }
 
 function sourceHash(input: string): string {
@@ -70,7 +79,12 @@ describe("SoL-Pi entrypoint", () => {
 			onlineContextCompact: true,
 		});
 
-		expect(pi.registeredTools.map((tool) => tool.name)).toEqual(["edit", "write", "obs_recall", "update_plan"]);
+		expect(pi.registeredTools.map((tool) => tool.name)).toEqual([
+			"edit",
+			"write",
+			"obs_recall",
+			"update_plan",
+		]);
 		expect([...pi.handlers.keys()].sort()).toEqual([
 			"agent_settled",
 			"before_provider_request",
@@ -100,7 +114,10 @@ describe("SoL-Pi entrypoint", () => {
 
 		expect(loader).toHaveBeenCalledOnce();
 		expect(pi.registeredTools.map((tool) => tool.name)).toEqual(["obs_recall"]);
-		expect([...pi.handlers.keys()].sort()).toEqual(["context", "session_start"]);
+		expect([...pi.handlers.keys()].sort()).toEqual([
+			"context",
+			"session_start",
+		]);
 	});
 
 	it("passes the configured reducer provider/model route into EPR", async () => {
@@ -118,8 +135,14 @@ describe("SoL-Pi entrypoint", () => {
 			const context = fakeContext(root, {
 				modelRegistry: {
 					find: (provider: string, modelId: string) =>
-						provider === CUSTOM_REDUCER.provider && modelId === CUSTOM_REDUCER.id ? CUSTOM_REDUCER : undefined,
-					complete: async (model: Model<string>, request: Context): Promise<AssistantMessage> => {
+						provider === CUSTOM_REDUCER.provider &&
+						modelId === CUSTOM_REDUCER.id
+							? CUSTOM_REDUCER
+							: undefined,
+					complete: async (
+						model: Model<string>,
+						request: Context,
+					): Promise<AssistantMessage> => {
 						calledModel = model;
 						const input = contextInput(request);
 						return {
@@ -132,7 +155,12 @@ describe("SoL-Pi entrypoint", () => {
 										source_sha256: sourceHash(input),
 										status: "failure",
 										uncertain: false,
-										evidence: [{ kind: "failure", quote: "ERROR configured reducer failure" }],
+										evidence: [
+											{
+												kind: "failure",
+												quote: "ERROR configured reducer failure",
+											},
+										],
 									}),
 								},
 							],
@@ -145,7 +173,13 @@ describe("SoL-Pi entrypoint", () => {
 								cacheRead: 0,
 								cacheWrite: 0,
 								totalTokens: 20,
-								cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+								cost: {
+									input: 0,
+									output: 0,
+									cacheRead: 0,
+									cacheWrite: 0,
+									total: 0,
+								},
 							},
 							stopReason: "stop",
 							timestamp: Date.now(),
@@ -154,13 +188,21 @@ describe("SoL-Pi entrypoint", () => {
 				} as unknown as ExtensionContext["modelRegistry"],
 			});
 
-			const result = (await pi.emit("tool_result", bashEvent(body), context)) as {
+			const result = (await pi.emit(
+				"tool_result",
+				bashEvent(body),
+				context,
+			)) as {
 				content: { type: string; text: string }[];
 			};
 
 			expect(calledModel).toBe(CUSTOM_REDUCER);
-			expect(result.content[0]?.text ?? "").toContain(`reducer_model=${CUSTOM_REDUCER.id}`);
-			expect(result.content[0]?.text ?? "").toContain(`reducer_provider=${CUSTOM_REDUCER.provider}`);
+			expect(result.content[0]?.text ?? "").toContain(
+				`reducer_model=${CUSTOM_REDUCER.id}`,
+			);
+			expect(result.content[0]?.text ?? "").toContain(
+				`reducer_provider=${CUSTOM_REDUCER.provider}`,
+			);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}

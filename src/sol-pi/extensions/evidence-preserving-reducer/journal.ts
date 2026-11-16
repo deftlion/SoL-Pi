@@ -3,7 +3,11 @@
  * SPDX-License-Identifier: MIT
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { REDUCER_EVENT_SCHEMA, REDUCER_EVENT_TYPE, type ReducerConfig } from "./config.ts";
+import {
+	REDUCER_EVENT_SCHEMA,
+	REDUCER_EVENT_TYPE,
+	type ReducerConfig,
+} from "./config.ts";
 
 /**
  * Append one non-context session entry per decision the reducer made.
@@ -13,7 +17,10 @@ import { REDUCER_EVENT_SCHEMA, REDUCER_EVENT_TYPE, type ReducerConfig } from "./
  */
 export type Journal = (kind: string, data?: object) => void;
 
-export function createJournal(pi: ExtensionAPI, config: ReducerConfig): Journal {
+export function createJournal(
+	pi: ExtensionAPI,
+	config: ReducerConfig,
+): Journal {
 	return (kind, data = {}) => {
 		pi.appendEntry(REDUCER_EVENT_TYPE, {
 			schema: REDUCER_EVENT_SCHEMA,

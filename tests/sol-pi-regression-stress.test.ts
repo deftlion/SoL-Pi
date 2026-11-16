@@ -7,7 +7,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AssistantMessage, Context, Model } from "@earendil-works/pi-ai";
-import type { ExtensionContext, ToolResultEvent } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionContext,
+	ToolResultEvent,
+} from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { archiveBody } from "../src/sol-pi/extensions/evidence-preserving-reducer/archive.ts";
 import {
@@ -16,8 +19,8 @@ import {
 	REDUCER_RECEIPT_SCHEMA,
 } from "../src/sol-pi/extensions/evidence-preserving-reducer/index.ts";
 import {
-	callReducer,
 	type CompatComplete,
+	callReducer,
 } from "../src/sol-pi/extensions/evidence-preserving-reducer/provider.ts";
 import { FakePi, FakeSessionManager, fakeContext } from "./helpers.ts";
 
@@ -60,9 +63,12 @@ interface CapturedCall {
 
 function contextInput(context: Context): string {
 	const message = context.messages[0];
-	if (message?.role !== "user") throw new Error("reducer request omitted its user message");
+	if (message?.role !== "user")
+		throw new Error("reducer request omitted its user message");
 	if (typeof message.content === "string") return message.content;
-	return message.content.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("\n");
+	return message.content
+		.flatMap((item) => (item.type === "text" ? [item.text] : []))
+		.join("\n");
 }
 
 function sourceHash(input: string): string {
@@ -128,17 +134,29 @@ describe("SoL-Pi regression stress", () => {
 				const archive = await archiveBody(config.storeRoot, body);
 				let call: CapturedCall | undefined;
 				let authModel: Model<string> | undefined;
-				const context = fakeContext(new FakeSessionManager([], `epr-stress-${i}`, root), {
-					model: ACTIVE_MODEL,
-					modelRegistry: {
-						find: (provider: string, modelId: string) =>
-							provider === REDUCER_MODEL.provider && modelId === REDUCER_MODEL.id ? REDUCER_MODEL : undefined,
-						getApiKeyAndHeaders: async (model: Model<string>) => {
-							authModel = model;
-							return { ok: true, apiKey: "test-key", headers: {}, env: {}, baseUrl: "https://stress.invalid/v1" };
-						},
-					} as unknown as ExtensionContext["modelRegistry"],
-				});
+				const context = fakeContext(
+					new FakeSessionManager([], `epr-stress-${i}`, root),
+					{
+						model: ACTIVE_MODEL,
+						modelRegistry: {
+							find: (provider: string, modelId: string) =>
+								provider === REDUCER_MODEL.provider &&
+								modelId === REDUCER_MODEL.id
+									? REDUCER_MODEL
+									: undefined,
+							getApiKeyAndHeaders: async (model: Model<string>) => {
+								authModel = model;
+								return {
+									ok: true,
+									apiKey: "test-key",
+									headers: {},
+									env: {},
+									baseUrl: "https://stress.invalid/v1",
+								};
+							},
+						} as unknown as ExtensionContext["modelRegistry"],
+					},
+				);
 
 				const result = await callReducer(
 					config,
@@ -154,9 +172,19 @@ describe("SoL-Pi regression stress", () => {
 
 				expect(result.ok).toBe(true);
 				expect(authModel).toBe(REDUCER_MODEL);
-				expect(call?.model).toMatchObject({ provider: REDUCER_MODEL.provider, id: REDUCER_MODEL.id });
-				expect(call?.model).not.toMatchObject({ provider: ACTIVE_MODEL.provider, id: ACTIVE_MODEL.id });
-				expect(call?.options).toMatchObject({ cacheRetention: "none", maxTokens: 2_048, timeoutMs: 90_000 });
+				expect(call?.model).toMatchObject({
+					provider: REDUCER_MODEL.provider,
+					id: REDUCER_MODEL.id,
+				});
+				expect(call?.model).not.toMatchObject({
+					provider: ACTIVE_MODEL.provider,
+					id: ACTIVE_MODEL.id,
+				});
+				expect(call?.options).toMatchObject({
+					cacheRetention: "none",
+					maxTokens: 2_048,
+					timeoutMs: 90_000,
+				});
 				expect(result.model).toBe(REDUCER_MODEL.id);
 				expect(result.provider).toBe(REDUCER_MODEL.provider);
 				expect(result.outputText).toContain("ERROR stress failure");
@@ -186,10 +214,15 @@ describe("SoL-Pi regression stress", () => {
 				});
 				const body = `ERROR stress failure\ncase=${i}\n${"diagnostic line\n".repeat(360 + (i % 20))}`;
 
-				expect(await pi.emit("tool_result", bashEvent(body, `call-${i}`), context)).toBeUndefined();
+				expect(
+					await pi.emit("tool_result", bashEvent(body, `call-${i}`), context),
+				).toBeUndefined();
 				expect(calls).toBe(0);
 				expect(manager.customEntryData()).toContainEqual(
-					expect.objectContaining({ kind: "fallback", reason: "reducer-model-unavailable" }),
+					expect.objectContaining({
+						kind: "fallback",
+						reason: "reducer-model-unavailable",
+					}),
 				);
 			}
 		} finally {

@@ -2,8 +2,11 @@
  * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: MIT
  */
-import type { ExtensionAPI, SessionEntry } from "@earendil-works/pi-coding-agent";
-import { parsePlanSteps, type PlanStep } from "./plan.ts";
+import type {
+	ExtensionAPI,
+	SessionEntry,
+} from "@earendil-works/pi-coding-agent";
+import { type PlanStep, parsePlanSteps } from "./plan.ts";
 
 export const ONLINE_STATE_ENTRY = "sol-pi-online-context-state-v1";
 
@@ -62,12 +65,14 @@ function finiteNonNegative(value: unknown): value is number {
 }
 
 function stringArray(value: unknown): readonly string[] | undefined {
-	if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) return;
+	if (!Array.isArray(value) || !value.every((item) => typeof item === "string"))
+		return;
 	return [...value];
 }
 
 function progressSummary(value: unknown): ProgressSummary | undefined {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) return;
+	if (typeof value !== "object" || value === null || Array.isArray(value))
+		return;
 	const record = value as Record<string, unknown>;
 	const filesChanged = stringArray(record.filesChanged);
 	const verification = stringArray(record.verification);
@@ -83,17 +88,27 @@ function progressSummary(value: unknown): ProgressSummary | undefined {
 	) {
 		return;
 	}
-	return { stepId: record.stepId, goal: record.goal, filesChanged, verification, decisions, nextWork };
+	return {
+		stepId: record.stepId,
+		goal: record.goal,
+		filesChanged,
+		verification,
+		decisions,
+		nextWork,
+	};
 }
 
 function parseOnlineState(value: unknown): OnlineState | undefined {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) return;
+	if (typeof value !== "object" || value === null || Array.isArray(value))
+		return;
 	const record = value as Record<string, unknown>;
 	const plan = parsePlanSteps(record.plan);
 	const pendingProgress = Array.isArray(record.pendingProgress)
 		? record.pendingProgress.map(progressSummary)
 		: undefined;
-	const completedBoundaryRequestCounts = Array.isArray(record.completedBoundaryRequestCounts)
+	const completedBoundaryRequestCounts = Array.isArray(
+		record.completedBoundaryRequestCounts,
+	)
 		? record.completedBoundaryRequestCounts
 		: undefined;
 	if (
@@ -105,11 +120,17 @@ function parseOnlineState(value: unknown): OnlineState | undefined {
 		!completedBoundaryRequestCounts.every(nonNegativeInteger) ||
 		!nonNegativeInteger(record.epoch) ||
 		(typeof record.lastCompactionRequestCount !== "undefined" &&
-			!(record.lastCompactionRequestCount === null || nonNegativeInteger(record.lastCompactionRequestCount))) ||
+			!(
+				record.lastCompactionRequestCount === null ||
+				nonNegativeInteger(record.lastCompactionRequestCount)
+			)) ||
 		!nonNegativeInteger(record.requestCount) ||
 		!nonNegativeInteger(record.lastBoundaryRequestCount) ||
 		record.lastBoundaryRequestCount > record.requestCount ||
-		!(record.lastContextTokens === null || nonNegativeInteger(record.lastContextTokens)) ||
+		!(
+			record.lastContextTokens === null ||
+			nonNegativeInteger(record.lastContextTokens)
+		) ||
 		!finiteNonNegative(record.positiveContextDeltaTotal) ||
 		!nonNegativeInteger(record.positiveContextDeltaCount) ||
 		!nonNegativeInteger(record.nativeCompactionCount) ||
@@ -126,7 +147,8 @@ function parseOnlineState(value: unknown): OnlineState | undefined {
 		requestCount: record.requestCount,
 		lastCompactionRequestCount: record.lastCompactionRequestCount ?? null,
 		lastBoundaryRequestCount: record.lastBoundaryRequestCount,
-		completedBoundaryRequestCounts: completedBoundaryRequestCounts as readonly number[],
+		completedBoundaryRequestCounts:
+			completedBoundaryRequestCounts as readonly number[],
 		lastContextTokens: record.lastContextTokens,
 		positiveContextDeltaTotal: record.positiveContextDeltaTotal,
 		positiveContextDeltaCount: record.positiveContextDeltaCount,
@@ -136,10 +158,13 @@ function parseOnlineState(value: unknown): OnlineState | undefined {
 	};
 }
 
-export function restoreOnlineState(entries: readonly SessionEntry[]): OnlineState {
+export function restoreOnlineState(
+	entries: readonly SessionEntry[],
+): OnlineState {
 	for (let index = entries.length - 1; index >= 0; index--) {
 		const entry = entries[index];
-		if (entry?.type !== "custom" || entry.customType !== ONLINE_STATE_ENTRY) continue;
+		if (entry?.type !== "custom" || entry.customType !== ONLINE_STATE_ENTRY)
+			continue;
 		const state = parseOnlineState(entry.data);
 		if (state) return state;
 	}
@@ -150,17 +175,29 @@ export function appendOnlineState(pi: ExtensionAPI, state: OnlineState): void {
 	pi.appendEntry(ONLINE_STATE_ENTRY, state);
 }
 
-export function recordProviderRequest(state: OnlineState, contextTokens: number): OnlineState {
-	const delta = state.lastContextTokens === null ? 0 : contextTokens - state.lastContextTokens;
-	const cacheDebtTokens = Math.max(0, state.cacheDebtTokens - state.cacheDebtRepaymentTokens);
+export function recordProviderRequest(
+	state: OnlineState,
+	contextTokens: number,
+): OnlineState {
+	const delta =
+		state.lastContextTokens === null
+			? 0
+			: contextTokens - state.lastContextTokens;
+	const cacheDebtTokens = Math.max(
+		0,
+		state.cacheDebtTokens - state.cacheDebtRepaymentTokens,
+	);
 	return {
 		...state,
 		requestCount: state.requestCount + 1,
 		lastContextTokens: contextTokens,
-		positiveContextDeltaTotal: state.positiveContextDeltaTotal + Math.max(0, delta),
-		positiveContextDeltaCount: state.positiveContextDeltaCount + (delta > 0 ? 1 : 0),
+		positiveContextDeltaTotal:
+			state.positiveContextDeltaTotal + Math.max(0, delta),
+		positiveContextDeltaCount:
+			state.positiveContextDeltaCount + (delta > 0 ? 1 : 0),
 		cacheDebtTokens,
-		cacheDebtRepaymentTokens: cacheDebtTokens === 0 ? 0 : state.cacheDebtRepaymentTokens,
+		cacheDebtRepaymentTokens:
+			cacheDebtTokens === 0 ? 0 : state.cacheDebtRepaymentTokens,
 	};
 }
 
@@ -169,13 +206,21 @@ export function recordBoundary(
 	plan: readonly PlanStep[],
 	progress: ProgressSummary | undefined,
 ): OnlineState {
-	const interval = Math.max(0, state.requestCount - state.lastBoundaryRequestCount);
+	const interval = Math.max(
+		0,
+		state.requestCount - state.lastBoundaryRequestCount,
+	);
 	return {
 		...state,
 		plan: [...plan],
-		pendingProgress: progress ? [...state.pendingProgress, progress] : state.pendingProgress,
+		pendingProgress: progress
+			? [...state.pendingProgress, progress]
+			: state.pendingProgress,
 		lastBoundaryRequestCount: state.requestCount,
-		completedBoundaryRequestCounts: [...state.completedBoundaryRequestCounts, interval],
+		completedBoundaryRequestCounts: [
+			...state.completedBoundaryRequestCounts,
+			interval,
+		],
 	};
 }
 
@@ -195,7 +240,8 @@ export function recordCompaction(
 		lastContextTokens: null,
 		nativeCompactionCount: state.nativeCompactionCount + 1,
 		cacheDebtTokens: state.cacheDebtTokens + Math.max(0, debt.debtTokens),
-		cacheDebtRepaymentTokens: state.cacheDebtRepaymentTokens + Math.max(0, debt.repaymentTokens),
+		cacheDebtRepaymentTokens:
+			state.cacheDebtRepaymentTokens + Math.max(0, debt.repaymentTokens),
 	};
 }
 
@@ -217,7 +263,11 @@ export function recordCorrection(state: OnlineState): OnlineState {
 
 /** A new user task must not inherit the completed task's request horizon. */
 export function recordCompletedPlanHandoff(state: OnlineState): OnlineState {
-	if (state.plan.length === 0 || state.plan.some((step) => step.status !== "completed")) return state;
+	if (
+		state.plan.length === 0 ||
+		state.plan.some((step) => step.status !== "completed")
+	)
+		return state;
 	return {
 		...state,
 		epoch: state.epoch + 1,

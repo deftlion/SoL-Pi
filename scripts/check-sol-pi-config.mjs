@@ -15,8 +15,16 @@ const FEATURE_KEYS = [
 const DEFAULT_CACHE_WRITE_READ_RATIO = 12.5;
 const DEFAULT_EPR_REDUCER_PROVIDER = ["openai", "codex"].join("-");
 const DEFAULT_EPR_REDUCER_MODEL = ["gpt-5.6", "luna"].join("-");
-const STRING_KEYS = ["evidencePreservingReducerModel", "evidencePreservingReducerProvider"];
-const CONFIG_KEYS = new Set(["version", ...FEATURE_KEYS, ...STRING_KEYS, "cacheWriteReadRatio"]);
+const STRING_KEYS = [
+	"evidencePreservingReducerModel",
+	"evidencePreservingReducerProvider",
+];
+const CONFIG_KEYS = new Set([
+	"version",
+	...FEATURE_KEYS,
+	...STRING_KEYS,
+	"cacheWriteReadRatio",
+]);
 
 function fail(message) {
 	throw new Error(message);
@@ -49,12 +57,16 @@ function readConfig(path) {
 	try {
 		text = readFileSync(path, "utf8");
 	} catch (error) {
-		fail(`unable to read config ${path}: ${error instanceof Error ? error.message : String(error)}`);
+		fail(
+			`unable to read config ${path}: ${error instanceof Error ? error.message : String(error)}`,
+		);
 	}
 	try {
 		return JSON.parse(text);
 	} catch (error) {
-		fail(`invalid JSON in config ${path}: ${error instanceof Error ? error.message : String(error)}`);
+		fail(
+			`invalid JSON in config ${path}: ${error instanceof Error ? error.message : String(error)}`,
+		);
 	}
 }
 
@@ -70,9 +82,11 @@ function validateConfig(value, requireAllEnabled) {
 	const effective = { version: 1 };
 	for (const key of FEATURE_KEYS) {
 		const configured = value[key];
-		if (configured !== undefined && typeof configured !== "boolean") fail(`${key} must be boolean`);
+		if (configured !== undefined && typeof configured !== "boolean")
+			fail(`${key} must be boolean`);
 		effective[key] = configured ?? false;
-		if (requireAllEnabled && effective[key] !== true) fail(`${key} must be true`);
+		if (requireAllEnabled && effective[key] !== true)
+			fail(`${key} must be true`);
 	}
 	const cacheWriteReadRatio = Object.hasOwn(value, "cacheWriteReadRatio")
 		? value.cacheWriteReadRatio
@@ -105,16 +119,22 @@ function validateConfig(value, requireAllEnabled) {
 
 function stringConfigValue(value, key, defaultValue) {
 	const configured = Object.hasOwn(value, key) ? value[key] : defaultValue;
-	if (typeof configured !== "string" || configured.trim().length === 0) fail(`${key} must be a non-empty string`);
+	if (typeof configured !== "string" || configured.trim().length === 0)
+		fail(`${key} must be a non-empty string`);
 	return configured.trim();
 }
 
 try {
 	const options = parseArguments(process.argv.slice(2));
 	const configPath = resolve(options.config);
-	const result = validateConfig(readConfig(configPath), options.requireAllEnabled);
+	const result = validateConfig(
+		readConfig(configPath),
+		options.requireAllEnabled,
+	);
 	console.log(JSON.stringify({ ...result, config: configPath }, null, 2));
 } catch (error) {
-	console.error(`SoL-Pi configuration preflight failed: ${error instanceof Error ? error.message : String(error)}`);
+	console.error(
+		`SoL-Pi configuration preflight failed: ${error instanceof Error ? error.message : String(error)}`,
+	);
 	process.exitCode = 1;
 }

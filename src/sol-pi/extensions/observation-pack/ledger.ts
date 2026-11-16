@@ -15,6 +15,10 @@ export type Ledger = (entry: Record<string, unknown>) => Promise<void>;
 export function createLedger(path: string): Ledger {
 	return async (entry) => {
 		await mkdir(dirname(path), { recursive: true });
-		await appendFile(path, `${JSON.stringify({ timestamp: new Date().toISOString(), ...entry })}\n`, "utf8");
+		await appendFile(
+			path,
+			`${JSON.stringify({ timestamp: new Date().toISOString(), ...entry })}\n`,
+			"utf8",
+		);
 	};
 }

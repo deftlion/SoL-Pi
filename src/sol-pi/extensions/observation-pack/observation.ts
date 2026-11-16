@@ -19,7 +19,11 @@ export const PLACEHOLDER_EXCERPT_BYTES = 1024;
 const CHARS_PER_TOKEN = 4;
 const OBSERVATION_ID_PATTERN = /^obs_[a-f0-9]{24}$/u;
 const READ_OBJECT_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW;
-const CREATE_OBJECT_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
+const CREATE_OBJECT_FLAGS =
+	constants.O_WRONLY |
+	constants.O_CREAT |
+	constants.O_EXCL |
+	constants.O_NOFOLLOW;
 
 /**
  * Receipts from the evidence-preserving reducer are already a reduction of a
@@ -64,7 +68,9 @@ function countBufferLines(buffer: Buffer): number {
 	return lines;
 }
 
-export function isPureTextResult(message: AgentMessage): message is ToolResultMessage {
+export function isPureTextResult(
+	message: AgentMessage,
+): message is ToolResultMessage {
 	return (
 		message.role === "toolResult" &&
 		!message.isError &&
@@ -74,11 +80,15 @@ export function isPureTextResult(message: AgentMessage): message is ToolResultMe
 }
 
 function textFromResult(message: ToolResultMessage): string {
-	return (message.content as TextContent[]).map((block) => block.text).join("\n");
+	return (message.content as TextContent[])
+		.map((block) => block.text)
+		.join("\n");
 }
 
 function containsReducerReceipt(text: string): boolean {
-	return text.split("\n").some((line) => line === EVIDENCE_REDUCER_RECEIPT_PREFIX);
+	return text
+		.split("\n")
+		.some((line) => line === EVIDENCE_REDUCER_RECEIPT_PREFIX);
 }
 
 /**
@@ -95,7 +105,10 @@ export function isObservationId(id: string): boolean {
 	return OBSERVATION_ID_PATTERN.test(id);
 }
 
-export function createObservation(message: ToolResultMessage, runtimeRoot: string): Observation | undefined {
+export function createObservation(
+	message: ToolResultMessage,
+	runtimeRoot: string,
+): Observation | undefined {
 	const text = textFromResult(message);
 	if (containsReducerReceipt(text)) return undefined;
 	const bytes = Buffer.byteLength(text, "utf8");
@@ -125,7 +138,9 @@ export async function ensureStored(observation: Observation): Promise<void> {
 	await mkdir(directoryPath, { recursive: true, mode: 0o700 });
 	const directoryStats = await lstat(directoryPath);
 	if (!directoryStats.isDirectory() || directoryStats.isSymbolicLink()) {
-		throw new Error(`Observation directory is not a regular directory for ${observation.id}`);
+		throw new Error(
+			`Observation directory is not a regular directory for ${observation.id}`,
+		);
 	}
 
 	let handle: FileHandle | undefined;
@@ -133,19 +148,30 @@ export async function ensureStored(observation: Observation): Promise<void> {
 		handle = await open(observation.filePath, CREATE_OBJECT_FLAGS, 0o600);
 		await handle.writeFile(observation.text, { encoding: "utf8" });
 	} catch (error) {
-		if (!(error instanceof Error) || !("code" in error) || error.code !== "EEXIST") throw error;
+		if (
+			!(error instanceof Error) ||
+			!("code" in error) ||
+			error.code !== "EEXIST"
+		)
+			throw error;
 		const existingHandle = await open(observation.filePath, READ_OBJECT_FLAGS);
 		try {
 			const existing = await existingHandle.stat();
 			if (!existing.isFile()) {
-				throw new Error(`Content-addressed observation is not a regular file for ${observation.id}`);
+				throw new Error(
+					`Content-addressed observation is not a regular file for ${observation.id}`,
+				);
 			}
 			if (existing.size !== observation.bytes) {
-				throw new Error(`Content-addressed observation size mismatch for ${observation.id}`);
+				throw new Error(
+					`Content-addressed observation size mismatch for ${observation.id}`,
+				);
 			}
 			const existingContent = await existingHandle.readFile();
 			if (hash(existingContent) !== observation.contentHash) {
-				throw new Error(`Content-addressed observation hash mismatch for ${observation.id}`);
+				throw new Error(
+					`Content-addressed observation hash mismatch for ${observation.id}`,
+				);
 			}
 		} finally {
 			await existingHandle.close();
@@ -155,7 +181,11 @@ export async function ensureStored(observation: Observation): Promise<void> {
 	}
 }
 
-function completeLineExcerpt(text: string, budgetBytes: number, fromEnd: boolean): string {
+function completeLineExcerpt(
+	text: string,
+	budgetBytes: number,
+	fromEnd: boolean,
+): string {
 	const lines = text.split(/(?<=\n)/);
 	const selected: string[] = [];
 	let selectedBytes = 0;
@@ -206,7 +236,8 @@ export interface RecallChunk {
 
 function trimUtf8End(buffer: Buffer, limit: number): number {
 	let end = limit;
-	while (end > 0 && end < buffer.length && ((buffer[end] ?? 0) & 0xc0) === 0x80) end -= 1;
+	while (end > 0 && end < buffer.length && ((buffer[end] ?? 0) & 0xc0) === 0x80)
+		end -= 1;
 	return end;
 }
 
@@ -218,8 +249,12 @@ export async function readRecallChunk(
 	const handle = await open(path, READ_OBJECT_FLAGS);
 	try {
 		const fileStats = await handle.stat();
-		if (!fileStats.isFile()) throw new Error("Stored observation is not a regular file");
-		if (offset > fileStats.size) throw new Error(`Offset ${offset} exceeds observation size ${fileStats.size}`);
+		if (!fileStats.isFile())
+			throw new Error("Stored observation is not a regular file");
+		if (offset > fileStats.size)
+			throw new Error(
+				`Offset ${offset} exceeds observation size ${fileStats.size}`,
+			);
 
 		const available = Math.max(0, fileStats.size - offset);
 		const buffer = Buffer.alloc(Math.min(available, limits.maxBytes + 4));

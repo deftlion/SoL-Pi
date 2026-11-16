@@ -2,34 +2,41 @@
  * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: MIT
  */
-import type { AgentMessage, AgentToolResult } from "@earendil-works/pi-agent-core";
+import type {
+	AgentMessage,
+	AgentToolResult,
+} from "@earendil-works/pi-agent-core";
 import {
-	estimateTokens,
 	type ExtensionContext,
 	type ExtensionFactory,
+	estimateTokens,
 	type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { formatSavingsCount, showSolPiSavings } from "../../tui.ts";
 import {
+	type CompactionDecision,
 	DEFAULT_COMPACTION_ECONOMICS,
 	decideCompaction,
-	type CompactionDecision,
 } from "./economics.ts";
-import { analyzePlanTransition, formatPlanSnapshot, parsePlanSteps } from "./plan.ts";
+import {
+	analyzePlanTransition,
+	formatPlanSnapshot,
+	parsePlanSteps,
+} from "./plan.ts";
 import { estimateProjectedCompactionTokens } from "./projection.ts";
 import {
 	appendOnlineState,
 	initialOnlineState,
+	type OnlineState,
+	type ProgressSummary,
 	recordBoundary,
 	recordCompaction,
 	recordCompletedPlanHandoff,
 	recordCorrection,
 	recordProviderRequest,
 	restoreOnlineState,
-	type OnlineState,
-	type ProgressSummary,
 } from "./state.ts";
-import { registerOnlineTools, type PlanUpdateInput } from "./tools.ts";
+import { type PlanUpdateInput, registerOnlineTools } from "./tools.ts";
 
 export const DEFAULT_KEEP_RECENT_TOKENS = 20_000;
 export const DEFAULT_NATIVE_SUMMARY_TOKEN_ESTIMATE = 1_000;
@@ -59,23 +66,38 @@ export type OnlineContextCompactOptions = {
 
 type PendingBoundary = { readonly toolCallId: string };
 type SelectedCompaction = { readonly decision: CompactionDecision };
-type CacheDebt = { readonly debtTokens: number; readonly repaymentTokens: number };
-type PendingContinuation = { readonly promise: Promise<void>; readonly resolve: () => void };
-type CompactionTokenSettings = { readonly keepRecentTokens: number; readonly reserveTokens: number };
+type CacheDebt = {
+	readonly debtTokens: number;
+	readonly repaymentTokens: number;
+};
+type PendingContinuation = {
+	readonly promise: Promise<void>;
+	readonly resolve: () => void;
+};
+type CompactionTokenSettings = {
+	readonly keepRecentTokens: number;
+	readonly reserveTokens: number;
+};
 type SettingsSource = { readonly getSettings?: () => unknown };
 
 export function resolveKeepRecentTokens(value: number | undefined): number {
 	const resolved = value ?? DEFAULT_KEEP_RECENT_TOKENS;
 	if (!Number.isSafeInteger(resolved) || resolved < 1) {
-		throw new Error("Online Context Compact keepRecentTokens must be a positive safe integer");
+		throw new Error(
+			"Online Context Compact keepRecentTokens must be a positive safe integer",
+		);
 	}
 	return resolved;
 }
 
-function resolveCacheWriteReadRatio(value: number | null | undefined): number | null {
+function resolveCacheWriteReadRatio(
+	value: number | null | undefined,
+): number | null {
 	if (value === undefined || value === null) return null;
 	if (!Number.isFinite(value) || value < 0) {
-		throw new Error("Online Context Compact cacheWriteReadRatio must be finite and non-negative");
+		throw new Error(
+			"Online Context Compact cacheWriteReadRatio must be finite and non-negative",
+		);
 	}
 	return value;
 }
@@ -84,11 +106,17 @@ function tokenEstimate(text: string): number {
 	return Math.ceil(Buffer.byteLength(text) / 4);
 }
 
-function result(text: string, details: Readonly<Record<string, unknown>>): AgentToolResult<Readonly<Record<string, unknown>>> {
+function result(
+	text: string,
+	details: Readonly<Record<string, unknown>>,
+): AgentToolResult<Readonly<Record<string, unknown>>> {
 	return { content: [{ type: "text", text }], details };
 }
 
-function progressSummary(input: PlanUpdateInput, completedStepId: string): ProgressSummary | undefined {
+function progressSummary(
+	input: PlanUpdateInput,
+	completedStepId: string,
+): ProgressSummary | undefined {
 	const step = input.steps.find((item) => item.id === completedStepId);
 	if (!step || !input.progress) return;
 	return {
@@ -97,7 +125,9 @@ function progressSummary(input: PlanUpdateInput, completedStepId: string): Progr
 		filesChanged: [...input.progress.files_changed],
 		verification: [...input.progress.verification],
 		decisions: [...input.progress.decisions],
-		nextWork: input.steps.filter((item) => item.status !== "completed").map((item) => item.goal),
+		nextWork: input.steps
+			.filter((item) => item.status !== "completed")
+			.map((item) => item.goal),
 	};
 }
 
@@ -106,7 +136,11 @@ export function estimateNativeCompactionTokens(
 	keepRecentTokens: number,
 	projectedMessages?: readonly AgentMessage[],
 ): number {
-	return estimateProjectedCompactionTokens(entries, keepRecentTokens, projectedMessages);
+	return estimateProjectedCompactionTokens(
+		entries,
+		keepRecentTokens,
+		projectedMessages,
+	);
 }
 
 function validPositiveInteger(value: unknown): value is number {
@@ -114,7 +148,9 @@ function validPositiveInteger(value: unknown): value is number {
 }
 
 function tokenSetting(value: unknown): number | undefined {
-	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+		? value
+		: undefined;
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
@@ -132,7 +168,11 @@ export function resolveCompactionTokenSettings(
 	model: { readonly provider: string; readonly id: string } | undefined,
 ): CompactionTokenSettings {
 	const compaction = record(record(settings)?.compaction);
-	const override = model ? record(record(compaction?.modelOverrides)?.[`${model.provider}/${model.id}`]) : undefined;
+	const override = model
+		? record(
+				record(compaction?.modelOverrides)?.[`${model.provider}/${model.id}`],
+			)
+		: undefined;
 	return {
 		keepRecentTokens:
 			tokenSetting(override?.keepRecentTokens) ??
@@ -146,13 +186,21 @@ export function resolveCompactionTokenSettings(
 }
 
 function isUserAbort(error: Error): boolean {
-	return error.name === "AbortError" || error.message === "Compaction cancelled";
+	return (
+		error.name === "AbortError" || error.message === "Compaction cancelled"
+	);
 }
 
-export function createOnlineContextCompactExtension(options: OnlineContextCompactOptions = {}): ExtensionFactory {
+export function createOnlineContextCompactExtension(
+	options: OnlineContextCompactOptions = {},
+): ExtensionFactory {
 	const configuredKeepRecentTokens =
-		options.keepRecentTokens === undefined ? undefined : resolveKeepRecentTokens(options.keepRecentTokens);
-	const cacheWriteReadRatio = resolveCacheWriteReadRatio(options.cacheWriteReadRatio);
+		options.keepRecentTokens === undefined
+			? undefined
+			: resolveKeepRecentTokens(options.keepRecentTokens);
+	const cacheWriteReadRatio = resolveCacheWriteReadRatio(
+		options.cacheWriteReadRatio,
+	);
 
 	return (pi) => {
 		let state: OnlineState = initialOnlineState();
@@ -171,7 +219,9 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 			nextContinuation = undefined;
 			continuation?.resolve();
 		};
-		const releaseParentContinuation = (continuation: PendingContinuation | undefined): void => {
+		const releaseParentContinuation = (
+			continuation: PendingContinuation | undefined,
+		): void => {
 			if (continuation) setTimeout(continuation.resolve, 0);
 		};
 
@@ -193,11 +243,14 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 		};
 		const save = (): void => appendOnlineState(pi, state);
 		// Pi 1.0 exposes its effective settings; Pi 0.84.2 does not, so it keeps the documented defaults.
-		const compactionSettings = (context: ExtensionContext): CompactionTokenSettings => {
+		const compactionSettings = (
+			context: ExtensionContext,
+		): CompactionTokenSettings => {
 			const getSettings = (pi as SettingsSource).getSettings;
 			let settings: unknown;
 			try {
-				settings = typeof getSettings === "function" ? getSettings.call(pi) : undefined;
+				settings =
+					typeof getSettings === "function" ? getSettings.call(pi) : undefined;
 			} catch {
 				settings = undefined;
 			}
@@ -207,10 +260,15 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 				: { ...resolved, keepRecentTokens: configuredKeepRecentTokens };
 		};
 		const contextTokens = (context: ExtensionContext): number => {
-			const visible = observedMessages.reduce((total, message) => total + estimateTokens(message), 0);
+			const visible = observedMessages.reduce(
+				(total, message) => total + estimateTokens(message),
+				0,
+			);
 			const estimated = visible + tokenEstimate(context.getSystemPrompt());
 			const reported = context.getContextUsage()?.tokens;
-			return validPositiveInteger(reported) ? Math.max(reported, estimated) : estimated;
+			return validPositiveInteger(reported)
+				? Math.max(reported, estimated)
+				: estimated;
 		};
 
 		registerOnlineTools(pi, {
@@ -218,13 +276,19 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 				ensureRestored(input.context);
 				if (input.signal?.aborted) throw new Error("Plan update was aborted");
 				const steps = parsePlanSteps(input.steps);
-				if (!steps || steps.length === 0) throw new Error("Plan must contain at least one valid step");
+				if (!steps || steps.length === 0)
+					throw new Error("Plan must contain at least one valid step");
 
 				const transition = analyzePlanTransition(state.plan, steps);
 				const completedIds = transition.completedSteps.map((step) => step.id);
 				if (completedIds.length > 0) {
-					state = recordBoundary(state, steps, progressSummary(input, completedIds[0] ?? ""));
-					if (!pendingBoundary) pendingBoundary = { toolCallId: input.toolCallId };
+					state = recordBoundary(
+						state,
+						steps,
+						progressSummary(input, completedIds[0] ?? ""),
+					);
+					if (!pendingBoundary)
+						pendingBoundary = { toolCallId: input.toolCallId };
 				} else {
 					state = { ...state, plan: [...steps] };
 				}
@@ -235,7 +299,8 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 					{
 						boundary: completedIds.length > 0,
 						completed_step_ids: completedIds,
-						progress_recorded: completedIds.length > 0 && input.progress !== undefined,
+						progress_recorded:
+							completedIds.length > 0 && input.progress !== undefined,
 						task_status: "active",
 						plan: steps,
 					},
@@ -244,7 +309,9 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 		});
 
 		pi.on("session_start", (_event, context) => restore(context));
-		pi.on("session_before_tree", () => (compactionInFlight ? { cancel: true } : undefined));
+		pi.on("session_before_tree", () =>
+			compactionInFlight ? { cancel: true } : undefined,
+		);
 		pi.on("session_tree", (_event, context) => restore(context));
 
 		// Count a provider request only when it carries an agent-loop context. Pi builds each agent
@@ -275,7 +342,10 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 		pi.on("input", (event, context) => {
 			compactionRefused = false;
 			ensureRestored(context);
-			if (event.streamingBehavior !== "steer" && !event.text.startsWith("CORRECTION:")) {
+			if (
+				event.streamingBehavior !== "steer" &&
+				!event.text.startsWith("CORRECTION:")
+			) {
 				const next = recordCompletedPlanHandoff(state);
 				if (next !== state) {
 					state = next;
@@ -294,11 +364,18 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 		pi.on("turn_end", (event, context) => {
 			// Plan chatter cannot make a rejected compact feasible. Require actual
 			// tool work or new user input before attempting another boundary.
-			if (event.toolResults.some((item) => item.toolName !== "update_plan" && !item.isError)) compactionRefused = false;
+			if (
+				event.toolResults.some(
+					(item) => item.toolName !== "update_plan" && !item.isError,
+				)
+			)
+				compactionRefused = false;
 			const boundary = pendingBoundary;
 			pendingBoundary = undefined;
 			if (!boundary || selected || compactionRefused) return;
-			const toolResult = event.toolResults.find((item) => item.toolCallId === boundary.toolCallId);
+			const toolResult = event.toolResults.find(
+				(item) => item.toolCallId === boundary.toolCallId,
+			);
 			if (
 				event.message.role !== "assistant" ||
 				event.message.stopReason === "error" ||
@@ -333,7 +410,9 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 				memoTokens: DEFAULT_NATIVE_SUMMARY_TOKEN_ESTIMATE,
 				contextTokens: writeTokens,
 				completedBoundaryRequestCounts: state.completedBoundaryRequestCounts,
-				remainingBoundaries: state.plan.filter((step) => step.status !== "completed").length,
+				remainingBoundaries: state.plan.filter(
+					(step) => step.status !== "completed",
+				).length,
 				averageContextTokenIncrement,
 				contextWindowTokens,
 				priorCompactionCount: state.nativeCompactionCount,
@@ -344,7 +423,10 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 				carriedDebtTokens: state.cacheDebtTokens,
 				cacheDebtRepaymentTokens: state.cacheDebtRepaymentTokens,
 				cacheWriteReadRatio,
-				economics: { ...DEFAULT_COMPACTION_ECONOMICS, windowReserveTokens: reserveTokens },
+				economics: {
+					...DEFAULT_COMPACTION_ECONOMICS,
+					windowReserveTokens: reserveTokens,
+				},
 			});
 			const decision: CompactionDecision =
 				priced.compact && archiveTokens === 0
@@ -361,7 +443,10 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 		// defers a turn requested from agent_settled until every settled handler has returned, keeps
 		// the session idle meanwhile, and awaits the turn before its own settlement completes, so
 		// waiting here would deadlock.
-		const continueParentTask = async (context: ExtensionContext, content: string): Promise<void> => {
+		const continueParentTask = async (
+			context: ExtensionContext,
+			content: string,
+		): Promise<void> => {
 			let resolveContinuation!: () => void;
 			const continuation: PendingContinuation = {
 				promise: new Promise<void>((resolve) => {
@@ -372,7 +457,11 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 			nextContinuation = continuation;
 			try {
 				pi.sendMessage(
-					{ customType: "sol-pi-online-context-compact", content, display: false },
+					{
+						customType: "sol-pi-online-context-compact",
+						content,
+						display: false,
+					},
 					{ triggerTurn: true },
 				);
 			} catch (error) {
@@ -406,8 +495,13 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 			}
 
 			activeDebt = {
-				debtTokens: pending.decision.postCompactionTokens * (pending.decision.incrementalCacheCostRatio ?? 0),
-				repaymentTokens: Math.max(0, pending.decision.archiveTokens - pending.decision.memoTokens),
+				debtTokens:
+					pending.decision.postCompactionTokens *
+					(pending.decision.incrementalCacheCostRatio ?? 0),
+				repaymentTokens: Math.max(
+					0,
+					pending.decision.archiveTokens - pending.decision.memoTokens,
+				),
 			};
 			let compacted = false;
 			let compactionError: Error | undefined;
@@ -427,7 +521,8 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 								compacted = true;
 								const removed = Math.max(
 									0,
-									pending.decision.archiveTokens - tokenEstimate(compaction.summary),
+									pending.decision.archiveTokens -
+										tokenEstimate(compaction.summary),
 								);
 								if (removed > 0) {
 									showSolPiSavings(
@@ -448,19 +543,33 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 					});
 				});
 				compactionInFlight = false;
-				const failure = compactionError && !isUserAbort(compactionError) ? compactionError : undefined;
-				const recoverableError = failure !== undefined && RECOVERABLE_COMPACTION_ERRORS.has(failure.message);
+				const failure =
+					compactionError && !isUserAbort(compactionError)
+						? compactionError
+						: undefined;
+				const recoverableError =
+					failure !== undefined &&
+					RECOVERABLE_COMPACTION_ERRORS.has(failure.message);
 				if (recoverableError) {
 					compactionRefused = true;
-					pi.appendEntry("sol-pi-online-context-compact-skipped", { reason: failure!.message });
-					if (context.mode === "tui") context.ui.notify(`Online compaction skipped: ${failure!.message}`, "warning");
+					pi.appendEntry("sol-pi-online-context-compact-skipped", {
+						reason: failure?.message,
+					});
+					if (context.mode === "tui")
+						context.ui.notify(
+							`Online compaction skipped: ${failure?.message}`,
+							"warning",
+						);
 				}
 
 				// The run was stopped for this compaction, so resume it unless the user cancelled.
 				// Known native refusals are recorded as skips; other failures still propagate after resuming.
-				if (compacted) await continueParentTask(context, POST_COMPACTION_PLAN_REMINDER);
-				else if (recoverableError) await continueParentTask(context, SKIPPED_COMPACTION_REMINDER);
-				else if (failure) await continueParentTask(context, COMPACTION_FAILED_RESUME_REMINDER);
+				if (compacted)
+					await continueParentTask(context, POST_COMPACTION_PLAN_REMINDER);
+				else if (recoverableError)
+					await continueParentTask(context, SKIPPED_COMPACTION_REMINDER);
+				else if (failure)
+					await continueParentTask(context, COMPACTION_FAILED_RESUME_REMINDER);
 				if (failure && !recoverableError) throw failure;
 			} finally {
 				compactionInFlight = false;
@@ -483,7 +592,9 @@ export function createOnlineContextCompactExtension(options: OnlineContextCompac
 			compactionRefused = false;
 			state = recordCompaction(
 				state,
-				event.fromExtension || !activeDebt ? { debtTokens: 0, repaymentTokens: 0 } : activeDebt,
+				event.fromExtension || !activeDebt
+					? { debtTokens: 0, repaymentTokens: 0 }
+					: activeDebt,
 			);
 			save();
 			pendingBoundary = undefined;

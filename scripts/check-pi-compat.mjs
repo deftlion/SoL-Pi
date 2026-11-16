@@ -42,7 +42,13 @@
  * 2 usage error.
  */
 
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -58,7 +64,9 @@ const warnings = [];
 
 function usage(message) {
 	if (message) console.error(`check-pi-compat: ${message}`);
-	console.error("Usage: node scripts/check-pi-compat.mjs [--pi-root <dir>] [--strict]");
+	console.error(
+		"Usage: node scripts/check-pi-compat.mjs [--pi-root <dir>] [--strict]",
+	);
 	process.exit(2);
 }
 
@@ -71,7 +79,8 @@ function parseArgs(argv) {
 			const value = argv[++index];
 			if (!value) usage("--pi-root needs a directory");
 			options.piRoot = value;
-		} else if (arg.startsWith("--pi-root=")) options.piRoot = arg.slice("--pi-root=".length);
+		} else if (arg.startsWith("--pi-root="))
+			options.piRoot = arg.slice("--pi-root=".length);
 		else if (arg === "--help" || arg === "-h") usage();
 		else usage(`unknown argument: ${arg}`);
 	}
@@ -89,7 +98,8 @@ function isPackageDir(dir, name) {
 
 /** Locate a package directory with Node's node_modules lookup, starting at `fromDir`. */
 function findPackageDir(name, fromDir) {
-	const lookup = createRequire(join(fromDir, "noop.js")).resolve.paths(name) ?? [];
+	const lookup =
+		createRequire(join(fromDir, "noop.js")).resolve.paths(name) ?? [];
 	for (const base of [fromDir, ...lookup]) {
 		const dir = join(base, name);
 		if (isPackageDir(dir, name)) return dir;
@@ -100,19 +110,31 @@ function findPackageDir(name, fromDir) {
 /** Resolve an ESM `exports` subpath to a file URL (only the conditions Pi packages use). */
 function exportUrl(packageDir, subpath) {
 	const manifest = readJson(join(packageDir, "package.json"));
-	let target = typeof manifest.exports === "object" ? manifest.exports[subpath] : undefined;
-	if (target === undefined && subpath === ".") target = typeof manifest.exports === "string" ? manifest.exports : manifest.main;
-	while (target && typeof target === "object") target = target.import ?? target.default ?? target.node;
-	if (typeof target !== "string") throw new Error(`${manifest.name} does not export "${subpath}"`);
+	let target =
+		typeof manifest.exports === "object"
+			? manifest.exports[subpath]
+			: undefined;
+	if (target === undefined && subpath === ".")
+		target =
+			typeof manifest.exports === "string" ? manifest.exports : manifest.main;
+	while (target && typeof target === "object")
+		target = target.import ?? target.default ?? target.node;
+	if (typeof target !== "string")
+		throw new Error(`${manifest.name} does not export "${subpath}"`);
 	return pathToFileURL(join(packageDir, target)).href;
 }
 
 function compareVersions(left, right) {
-	const parse = (version) => version.split("-")[0].split(".").map((part) => Number.parseInt(part, 10) || 0);
+	const parse = (version) =>
+		version
+			.split("-")[0]
+			.split(".")
+			.map((part) => Number.parseInt(part, 10) || 0);
 	const a = parse(left);
 	const b = parse(right);
 	for (let index = 0; index < 3; index++) {
-		if ((a[index] ?? 0) !== (b[index] ?? 0)) return (a[index] ?? 0) - (b[index] ?? 0);
+		if ((a[index] ?? 0) !== (b[index] ?? 0))
+			return (a[index] ?? 0) - (b[index] ?? 0);
 	}
 	return 0;
 }
@@ -137,20 +159,33 @@ function loadTypeScript() {
 /** Named value imports from Pi packages in src/, keyed by module specifier. */
 function piValueImports() {
 	const ts = loadTypeScript();
-	if (!ts) warnings.push("typescript is not installed; every imported Pi name is checked as a runtime value (run npm ci)");
+	if (!ts)
+		warnings.push(
+			"typescript is not installed; every imported Pi name is checked as a runtime value (run npm ci)",
+		);
 	const imports = new Map();
-	const pattern = /import\s+(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s*from\s*["'](@earendil-works\/[^"']+)["']/g;
+	const pattern =
+		/import\s+(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s*from\s*["'](@earendil-works\/[^"']+)["']/g;
 	for (const file of sourceFiles(join(repoRoot, "src"))) {
 		let code = readFileSync(file, "utf8");
 		// Keep only the imports that remain at runtime: names used solely as types are elided.
 		if (ts) {
-			const compilerOptions = { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 };
-			code = ts.transpileModule(code, { fileName: file, compilerOptions }).outputText;
+			const compilerOptions = {
+				module: ts.ModuleKind.ESNext,
+				target: ts.ScriptTarget.ES2022,
+			};
+			code = ts.transpileModule(code, {
+				fileName: file,
+				compilerOptions,
+			}).outputText;
 		}
 		for (const match of code.matchAll(pattern)) {
 			const names = imports.get(match[2]) ?? new Set();
 			for (const raw of match[1].split(",")) {
-				const name = raw.trim().split(/\s+as\s+/)[0].trim();
+				const name = raw
+					.trim()
+					.split(/\s+as\s+/)[0]
+					.trim();
 				if (name && !name.startsWith("type ")) names.add(name);
 			}
 			imports.set(match[2], names);
@@ -163,8 +198,12 @@ function splitSpecifier(specifier) {
 	const [scope, name, ...rest] = specifier.split("/");
 	const packageName = `${scope}/${name}`;
 	// Pi's extension loader aliases the pi-ai root to its compat entrypoint (a superset of the root).
-	if (packageName === "@earendil-works/pi-ai" && rest.length === 0) return { packageName, subpath: "./compat" };
-	return { packageName, subpath: rest.length === 0 ? "." : `./${rest.join("/")}` };
+	if (packageName === "@earendil-works/pi-ai" && rest.length === 0)
+		return { packageName, subpath: "./compat" };
+	return {
+		packageName,
+		subpath: rest.length === 0 ? "." : `./${rest.join("/")}`,
+	};
 }
 
 async function probeBashNonZeroExit(createBashToolDefinition) {
@@ -179,7 +218,9 @@ async function probeBashNonZeroExit(createBashToolDefinition) {
 			undefined,
 		);
 		if (result?.isError !== true) {
-			warnings.push("bash returned a non-error result for a non-zero exit; SoL-Pi expects a throw or isError");
+			warnings.push(
+				"bash returned a non-error result for a non-zero exit; SoL-Pi expects a throw or isError",
+			);
 			return "returns a non-error result (unexpected)";
 		}
 		const exitCode = result.structuredContent?.exit_code;
@@ -190,7 +231,9 @@ async function probeBashNonZeroExit(createBashToolDefinition) {
 		const exitLine = /^Command exited with code \d+$/m.exec(message)?.[0];
 		if (exitLine) return `throws (Pi <= 0.98 behaviour): ${exitLine}`;
 		const reason = message.trim().split("\n").at(-1)?.slice(0, 120) ?? "";
-		warnings.push(`bash probe threw for a reason other than a non-zero exit: ${reason}`);
+		warnings.push(
+			`bash probe threw for a reason other than a non-zero exit: ${reason}`,
+		);
 		return `throws an unexpected error: ${reason}`;
 	} finally {
 		rmSync(cwd, { recursive: true, force: true });
@@ -205,7 +248,10 @@ const modules = new Map();
 async function loadModule(piDir, specifier) {
 	if (!modules.has(specifier)) {
 		const { packageName, subpath } = splitSpecifier(specifier);
-		const packageDir = packageName === PI_CODING_AGENT ? piDir : findPackageDir(packageName, piDir);
+		const packageDir =
+			packageName === PI_CODING_AGENT
+				? piDir
+				: findPackageDir(packageName, piDir);
 		if (!packageDir) throw new Error(`${packageName} not found from ${piDir}`);
 		modules.set(specifier, await import(exportUrl(packageDir, subpath)));
 	}
@@ -223,13 +269,19 @@ function mixedInternalPackages(piDir, version) {
 		.filter((name) => name.startsWith("@earendil-works/pi-"))
 		.flatMap((name) => {
 			const dir = findPackageDir(name, piDir);
-			const installed = dir ? readJson(join(dir, "package.json")).version : undefined;
-			return installed && installed !== version ? [`${name.slice("@earendil-works/".length)} ${installed}`] : [];
+			const installed = dir
+				? readJson(join(dir, "package.json")).version
+				: undefined;
+			return installed && installed !== version
+				? [`${name.slice("@earendil-works/".length)} ${installed}`]
+				: [];
 		});
 }
 
 async function checkPi() {
-	const piDir = isPackageDir(searchRoot, PI_CODING_AGENT) ? searchRoot : findPackageDir(PI_CODING_AGENT, searchRoot);
+	const piDir = isPackageDir(searchRoot, PI_CODING_AGENT)
+		? searchRoot
+		: findPackageDir(PI_CODING_AGENT, searchRoot);
 	if (!piDir) {
 		errors.push(`${PI_CODING_AGENT} not found from ${searchRoot}`);
 		return;
@@ -240,7 +292,9 @@ async function checkPi() {
 	if (compareVersions(version, PI_FLOOR) < 0) {
 		errors.push(`Pi ${version} is below the supported floor ${PI_FLOOR}`);
 	} else if (!TESTED_PI_VERSIONS.includes(version)) {
-		warnings.push(`Pi ${version} is not in the tested set (${TESTED_PI_VERSIONS.join(", ")}); API checks still apply`);
+		warnings.push(
+			`Pi ${version} is not in the tested set (${TESTED_PI_VERSIONS.join(", ")}); API checks still apply`,
+		);
 	}
 	const mixed = mixedInternalPackages(piDir, version);
 	if (mixed.length > 0) {
@@ -260,7 +314,8 @@ async function checkPi() {
 			continue;
 		}
 		for (const name of names) {
-			if (module[name] === undefined) errors.push(`Missing public Pi API: ${specifier} ${name}`);
+			if (module[name] === undefined)
+				errors.push(`Missing public Pi API: ${specifier} ${name}`);
 		}
 	}
 
@@ -274,7 +329,9 @@ async function checkPi() {
 	}
 	const exportedVersion = pi.VERSION;
 	if (typeof exportedVersion === "string" && exportedVersion !== version) {
-		warnings.push(`VERSION export (${exportedVersion}) differs from package.json (${version})`);
+		warnings.push(
+			`VERSION export (${exportedVersion}) differs from package.json (${version})`,
+		);
 	}
 	for (const [name, value] of Object.entries({
 		createBashToolDefinition: pi.createBashToolDefinition,
@@ -282,7 +339,8 @@ async function checkPi() {
 		createWriteToolDefinition: pi.createWriteToolDefinition,
 		getAgentDir: pi.getAgentDir,
 		modelRegistryFind: pi.ModelRegistry?.prototype.find,
-		modelRegistryGetApiKeyAndHeaders: pi.ModelRegistry?.prototype.getApiKeyAndHeaders,
+		modelRegistryGetApiKeyAndHeaders:
+			pi.ModelRegistry?.prototype.getApiKeyAndHeaders,
 		sessionManagerGetBranch: pi.SessionManager?.prototype.getBranch,
 		sessionManagerGetEntries: pi.SessionManager?.prototype.getEntries,
 		sessionManagerGetLeafId: pi.SessionManager?.prototype.getLeafId,
@@ -290,19 +348,29 @@ async function checkPi() {
 		sessionManagerGetSessionId: pi.SessionManager?.prototype.getSessionId,
 		settingsManagerCreate: pi.SettingsManager?.create,
 		settingsManagerDrainErrors: pi.SettingsManager?.prototype.drainErrors,
-		settingsManagerGetShellCommandPrefix: pi.SettingsManager?.prototype.getShellCommandPrefix,
+		settingsManagerGetShellCommandPrefix:
+			pi.SettingsManager?.prototype.getShellCommandPrefix,
 		settingsManagerGetShellPath: pi.SettingsManager?.prototype.getShellPath,
 	})) {
-		if (typeof value !== "function") errors.push(`Missing public Pi API: ${name}`);
+		if (typeof value !== "function")
+			errors.push(`Missing public Pi API: ${name}`);
 	}
-	if (typeof pi.CONFIG_DIR_NAME !== "string" || pi.CONFIG_DIR_NAME.length === 0) {
+	if (
+		typeof pi.CONFIG_DIR_NAME !== "string" ||
+		pi.CONFIG_DIR_NAME.length === 0
+	) {
 		errors.push("Missing public Pi API: CONFIG_DIR_NAME");
 	}
 
 	if (typeof pi.createBashToolDefinition === "function") {
-		console.log(`bash non-zero exit: ${await probeBashNonZeroExit(pi.createBashToolDefinition)}`);
-		const outputSchema = pi.createBashToolDefinition(repoRoot).outputSchema !== undefined;
-		console.log(`bash outputSchema: ${outputSchema ? "yes (codemode scripts receive structuredContent)" : "no"}`);
+		console.log(
+			`bash non-zero exit: ${await probeBashNonZeroExit(pi.createBashToolDefinition)}`,
+		);
+		const outputSchema =
+			pi.createBashToolDefinition(repoRoot).outputSchema !== undefined;
+		console.log(
+			`bash outputSchema: ${outputSchema ? "yes (codemode scripts receive structuredContent)" : "no"}`,
+		);
 	}
 	console.log(
 		`codemode: ${typeof pi.createCodemodeExtension === "function" ? "available (createCodemodeExtension)" : "not available"}`,
@@ -322,5 +390,9 @@ try {
 for (const warning of warnings) console.warn(`WARN: ${warning}`);
 for (const error of errors) console.error(`ERROR: ${error}`);
 const failed = errors.length > 0 || (options.strict && warnings.length > 0);
-console.log(failed ? "Pi compatibility: FAIL" : `Pi compatibility: OK${warnings.length > 0 ? " (with warnings)" : ""}`);
+console.log(
+	failed
+		? "Pi compatibility: FAIL"
+		: `Pi compatibility: OK${warnings.length > 0 ? " (with warnings)" : ""}`,
+);
 process.exitCode = failed ? 1 : 0;
