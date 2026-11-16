@@ -315,12 +315,12 @@ describe("evidence-preserving reducer", () => {
 		const result = (await pi.emit("tool_result", bashEvent(body), context)) as {
 			content: { type: string; text: string }[];
 		};
-		const receipt = result.content[0]!.text;
+		const receipt = result.content[0]?.text ?? "";
 		expect(receipt).toContain("sol_pi_evidence_receipt_v1");
 		const sourcePath = receipt.match(/^source_artifact=(.+)$/mu)?.[1];
-		expect(sourcePath).toBeTruthy();
-		expect(await readFile(sourcePath!, "utf8")).toBe(body);
-		expect(relative(runtimeRoot(context), sourcePath!)).not.toMatch(/^\.\./u);
+		if (!sourcePath) throw new Error("source_artifact not found in receipt");
+		expect(await readFile(sourcePath, "utf8")).toBe(body);
+		expect(relative(runtimeRoot(context), sourcePath)).not.toMatch(/^\.\./u);
 		expect(sessionManager.getSessionFile()).toBeUndefined();
 	});
 
@@ -436,7 +436,8 @@ describe("evidence-preserving reducer", () => {
 		expect(call?.context.systemPrompt).toContain(
 			"lossless test/build output reducer",
 		);
-		expect(contextInput(call!.context)).toContain("<untrusted_log>");
+		if (!call) throw new Error("expected a model call");
+		expect(contextInput(call.context)).toContain("<untrusted_log>");
 		expect(call?.options).toMatchObject({
 			cacheRetention: "none",
 			maxTokens: 2_048,
@@ -973,7 +974,7 @@ describe("evidence-preserving reducer", () => {
 	it("does not delegate small or non-diagnostic output", async () => {
 		const root = await storeRoot();
 		let calls = 0;
-		const { context, manager, pi } = load(root, async () => {
+		const { context, pi } = load(root, async () => {
 			calls++;
 			throw new Error("unexpected model call");
 		});

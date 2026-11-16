@@ -180,7 +180,7 @@ describe("ObservationPack and OCC savings", () => {
 		const manager = new FakeSessionManager();
 		const messages = history();
 		for (const message of messages) manager.appendMessage(message);
-		const keptId = manager.entries[2]!.id;
+		const keptId = manager.entries[2]?.id ?? "";
 		manager.entries.push({
 			type: "compaction",
 			id: "compact-1",
@@ -191,19 +191,23 @@ describe("ObservationPack and OCC savings", () => {
 			tokensBefore: 80_000,
 		});
 		manager.leafId = "compact-1";
+		const msg2 = messages[2];
+		const msg3 = messages[3];
+		const msg4 = messages[4];
+		if (!msg2 || !msg3 || !msg4) throw new Error("expected history messages");
 		const tool = {
-			...messages[2]!,
+			...msg2,
 			content: [{ type: "text" as const, text: "short placeholder" }],
 		} as AgentMessage;
 		const projected = [
 			fauxAssistantMessage("extension-injected content"),
-			messages[4]!,
+			msg4,
 			tool,
-			messages[3]!,
+			msg3,
 		];
 		const sizes = projectedEntryTokens(manager.getBranch(), projected);
 		expect(sizes.get(keptId)).toBe(estimateTokens(tool));
-		expect(sizes.has(manager.entries[0]!.id)).toBe(false);
+		expect(sizes.has(manager.entries[0]?.id ?? "")).toBe(false);
 		expect(sizes.has("compact-1")).toBe(false);
 		const ambiguous = projectedEntryTokens(manager.getBranch(), [
 			...projected,
@@ -241,7 +245,8 @@ describe("ObservationPack and OCC savings", () => {
 			} as unknown as SessionEntry);
 			manager.leafId = "edit-small";
 			const entries = manager.getBranch();
-			const projected = buildProjection!(entries).messages;
+			if (!buildProjection) throw new Error("buildProjection not available");
+			const projected = buildProjection(entries).messages;
 			expect(
 				projected.reduce((sum, message) => sum + estimateTokens(message), 0),
 			).toBeLessThan(20_000);
@@ -282,12 +287,18 @@ describe("ObservationPack and OCC savings", () => {
 			});
 			manager.appendMessage(fauxAssistantMessage("y".repeat(80_000)));
 			const entries = manager.getBranch();
-			const projected = buildProjection!(entries).messages;
+			if (!buildProjection) throw new Error("buildProjection not available");
+			const projected = buildProjection(entries).messages;
+			const firstProjected = projected[0];
+			const secondProjected = projected[1];
+			if (!firstProjected || !secondProjected) {
+				throw new Error("expected projected messages");
+			}
 			expect(projectedEntryTokens(entries, projected).get("custom")).toBe(
-				estimateTokens(projected[0]!),
+				estimateTokens(firstProjected),
 			);
 			expect(estimateNativeCompactionTokens(entries, 20_000, projected)).toBe(
-				estimateTokens(projected[0]!) + estimateTokens(projected[1]!),
+				estimateTokens(firstProjected) + estimateTokens(secondProjected),
 			);
 		},
 	);
@@ -300,7 +311,8 @@ describe("ObservationPack and OCC savings", () => {
 			timestamp: 1,
 		});
 		manager.appendMessage(fauxAssistantMessage("kept answer"));
-		const keptId = manager.getLeafId()!;
+		const keptId = manager.getLeafId();
+		if (!keptId) throw new Error("expected leaf id");
 		manager.entries.push({
 			type: "compaction",
 			id: "checkpoint",
@@ -323,7 +335,8 @@ describe("ObservationPack and OCC savings", () => {
 		});
 		manager.appendMessage(fauxAssistantMessage("x".repeat(80_000)));
 		const entries = manager.getBranch();
-		const checkpoint = entries.find((entry) => entry.id === "checkpoint")!;
+		const checkpoint = entries.find((entry) => entry.id === "checkpoint");
+		if (!checkpoint) throw new Error("checkpoint entry not found");
 		const projected = buildProjection
 			? buildProjection(entries).messages
 			: [
@@ -331,15 +344,22 @@ describe("ObservationPack and OCC savings", () => {
 					...entries.slice(1, 2).flatMap(sessionEntryToContextMessages),
 					...entries.slice(3).flatMap(sessionEntryToContextMessages),
 				];
+		const summaryMessage = projected.find(
+			(message) => message.role === "compactionSummary",
+		);
+		const firstProjected = projected[0];
+		const entry1 = entries[1];
+		const entry3 = entries[3];
+		if (!summaryMessage || !firstProjected || !entry1 || !entry3) {
+			throw new Error("expected projected summary and entries");
+		}
 		const expected =
+			estimateTokens(summaryMessage) +
 			estimateTokens(
-				projected.find((message) => message.role === "compactionSummary")!,
+				entry1.type === "message" ? entry1.message : firstProjected,
 			) +
 			estimateTokens(
-				entries[1]!.type === "message" ? entries[1]!.message : projected[0]!,
-			) +
-			estimateTokens(
-				entries[3]!.type === "message" ? entries[3]!.message : projected[0]!,
+				entry3.type === "message" ? entry3.message : firstProjected,
 			);
 		expect(projectedEntryTokens(entries, projected).get("checkpoint")).toBe(1);
 		expect(estimateNativeCompactionTokens(entries, 20_000)).toBe(expected);

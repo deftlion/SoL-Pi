@@ -40,7 +40,7 @@ async function scenario(error?: Error, unrelatedCompactionAfterError = false) {
 				parentId: manager.getLeafId(),
 				timestamp: new Date().toISOString(),
 				summary: "memo",
-				firstKeptEntryId: manager.entries[1]!.id,
+				firstKeptEntryId: manager.entries[1]?.id ?? "",
 				tokensBefore: 195_000,
 			};
 			void pi

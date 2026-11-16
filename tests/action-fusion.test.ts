@@ -203,15 +203,16 @@ describe("action fusion then_run", () => {
 				content: "export {};\n",
 				then_run: { command: "npm test" },
 			};
-			const fused = write.renderCall!(fusedArgs, plainTheme, {
+			const fused = write.renderCall?.(fusedArgs, plainTheme, {
 				cwd,
 				args: fusedArgs,
 			} as never);
 			const plainArgs = { path, content: "export {};\n" };
-			const plain = write.renderCall!(plainArgs, plainTheme, {
+			const plain = write.renderCall?.(plainArgs, plainTheme, {
 				cwd,
 				args: plainArgs,
 			} as never);
+			if (!fused || !plain) throw new Error("expected renderCall components");
 
 			expect(componentText(fused)).toContain("⚡ SoL-Pi · Action Fusion");
 			expect(componentText(fused)).toContain(
@@ -272,17 +273,22 @@ describe("action fusion then_run", () => {
 					],
 					details: undefined,
 				};
-				const call = componentText(
-					tool.renderCall!(args, plainTheme, context as never),
+				const callComponent = tool.renderCall?.(
+					args,
+					plainTheme,
+					context as never,
 				);
-				const rendered = componentText(
-					tool.renderResult!(
-						result,
-						{ expanded: false, isPartial: false },
-						plainTheme,
-						context as never,
-					),
+				const resultComponent = tool.renderResult?.(
+					result,
+					{ expanded: false, isPartial: false },
+					plainTheme,
+					context as never,
 				);
+				if (!callComponent || !resultComponent) {
+					throw new Error("expected render components");
+				}
+				const call = componentText(callComponent);
+				const rendered = componentText(resultComponent);
 				return { call, rendered };
 			};
 

@@ -349,15 +349,12 @@ export default function (pi) {
 			name.startsWith("sol-pi-"),
 		);
 		expect(roots).toHaveLength(1);
-		const objectsDir = join(
-			temporaryDir,
-			roots[0]!,
-			"observation-pack",
-			"objects",
-		);
+		const root = roots[0] ?? "";
+		const objectsDir = join(temporaryDir, root, "observation-pack", "objects");
 		const objects = await readdir(objectsDir);
 		expect(objects).toHaveLength(1);
-		expect(await readFile(join(objectsDir, objects[0]!), "utf8")).toBe(body);
+		const objectName = objects[0] ?? "";
+		expect(await readFile(join(objectsDir, objectName), "utf8")).toBe(body);
 		expect(
 			(await readdir(agentDir, { recursive: true })).some((name) =>
 				name.endsWith(".jsonl"),

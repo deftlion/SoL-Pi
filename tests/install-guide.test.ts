@@ -21,7 +21,7 @@ function testedPiVersions(): string[] {
 			"TESTED_PI_VERSIONS not found in scripts/check-pi-compat.mjs",
 		);
 	return [...declaration[1].matchAll(/"([^"]+)"/gu)]
-		.map((match) => match[1]!)
+		.map((match) => match[1] ?? "")
 		.sort((left, right) => left.localeCompare(right, "en", { numeric: true }));
 }
 

@@ -173,13 +173,13 @@ describe("observation pack", () => {
 		const message = toolResult(body);
 		const pi = observationPackPi();
 		for (let index = 0; index < FULL_SENDS; index++) {
-			expect(resultText((await pi.emitContext([message], context))[0]!)).toBe(
-				body,
-			);
+			const emitted = (await pi.emitContext([message], context))[0];
+			if (!emitted) throw new Error("expected emitted message");
+			expect(resultText(emitted)).toBe(body);
 		}
-		const placeholder = resultText(
-			(await pi.emitContext([message], context))[0]!,
-		);
+		const packed = (await pi.emitContext([message], context))[0];
+		if (!packed) throw new Error("expected packed message");
+		const placeholder = resultText(packed);
 		const id = placeholder.match(/id: (obs_[a-f0-9]{24})/u)?.[1];
 		expect(id).toBeTruthy();
 		expect(
@@ -217,10 +217,11 @@ describe("observation pack", () => {
 	it("renders observation recall as an English lightning savings call", () => {
 		const recall = observationPackPi().tool("obs_recall");
 		const args = { id: "obs_0123456789abcdef01234567", offset: 0 };
-		const rendered = recall.renderCall!(args, plainTheme, {
+		const rendered = recall.renderCall?.(args, plainTheme, {
 			args,
 			cwd: process.cwd(),
 		} as never);
+		if (!rendered) throw new Error("expected renderCall component");
 
 		expect(componentText(rendered)).toContain("⚡ SoL-Pi · Observation Pack");
 		expect(componentText(rendered)).toContain("Money saved");
@@ -248,8 +249,8 @@ describe("observation pack", () => {
 		expect(resultText(message)).toBe(body);
 
 		const id = projected[2]?.match(/id: (obs_[a-f0-9]{24})/u)?.[1];
-		expect(id).toBeTruthy();
-		expect(await readFile(observationPath(sessionDir, id!), "utf8")).toBe(body);
+		if (!id) throw new Error("expected observation id");
+		expect(await readFile(observationPath(sessionDir, id), "utf8")).toBe(body);
 	});
 
 	it("announces the first measured placeholder saving only in TUI mode", async () => {
@@ -291,15 +292,15 @@ describe("observation pack", () => {
 		);
 
 		for (const context of [contextA, contextB]) {
-			expect(resultText((await pi.emitContext([message], context))[0]!)).toBe(
-				body,
-			);
-			expect(resultText((await pi.emitContext([message], context))[0]!)).toBe(
-				body,
-			);
-			expect(
-				resultText((await pi.emitContext([message], context))[0]!),
-			).toMatch(/^\[large tool result replaced/u);
+			const first = (await pi.emitContext([message], context))[0];
+			if (!first) throw new Error("expected first emitted message");
+			expect(resultText(first)).toBe(body);
+			const second = (await pi.emitContext([message], context))[0];
+			if (!second) throw new Error("expected second emitted message");
+			expect(resultText(second)).toBe(body);
+			const third = (await pi.emitContext([message], context))[0];
+			if (!third) throw new Error("expected third emitted message");
+			expect(resultText(third)).toMatch(/^\[large tool result replaced/u);
 		}
 
 		expect(
@@ -393,9 +394,14 @@ describe("observation pack", () => {
 		);
 		expect(projected[0]).toEqual(conversation[0]);
 		expect(projected[4]).toEqual(conversation[4]);
-		const placeholder = resultText(projected[2]!);
+		const projectedMessage = projected[2];
+		const originalMessage = conversation[2];
+		if (!projectedMessage || !originalMessage) {
+			throw new Error("expected projected and original messages");
+		}
+		const placeholder = resultText(projectedMessage);
 		expect(placeholder).toMatch(/^\[large tool result replaced/u);
-		expect(resultText(conversation[2]!)).toBe(body);
+		expect(resultText(originalMessage)).toBe(body);
 
 		const id = placeholder.match(/id: (obs_[a-f0-9]{24})/u)?.[1];
 		const recalled = await pi
@@ -422,13 +428,14 @@ describe("observation pack", () => {
 		const [packHandler] = pi.handlers.get("context") ?? [];
 		pi.handlers.set("context", [
 			async (event, context) => {
-				const result = await packHandler!(event, context);
+				const result = await packHandler?.(event, context);
 				results.push(result);
 				return result;
 			},
 			(event) => {
 				const message = (event as { messages: AgentMessage[] }).messages[0];
-				seen.push(resultText(message!));
+				if (!message) throw new Error("expected message in context event");
+				seen.push(resultText(message));
 			},
 		]);
 		const body = `ordering\n${repeatPastThreshold("observer line\n")}`;
@@ -631,11 +638,12 @@ describe("observation pack", () => {
 		}
 
 		const result = projected[0];
-		expect(result?.role).toBe("toolResult");
-		expect(resultText(result!)).toMatch(
+		if (!result) throw new Error("expected projected result");
+		expect(result.role).toBe("toolResult");
+		expect(resultText(result)).toMatch(
 			/Successfully wrote 12 bytes to target\.ts/u,
 		);
-		expect(resultText(result!)).toMatch(/\[then_run:succeeded\]/u);
+		expect(resultText(result)).toMatch(/\[then_run:succeeded\]/u);
 		expect(result).toMatchObject({
 			details: { patch: "preserved" },
 			isError: false,
@@ -816,7 +824,12 @@ async function runRealSession(mode: SessionMode, body: string) {
 				: [
 						{
 							name: `codemode-${mode}`,
-							factory: createCodemodeExtension!({ mode }),
+							factory: (
+								createCodemodeExtension ??
+								(() => {
+									throw new Error("createCodemodeExtension not available");
+								})
+							)({ mode }),
 						},
 					]),
 		],
@@ -892,18 +905,23 @@ function expectRealSessionPacking(
 	// result wraps the script output, so compare against the stored result.
 	const original = bigResult(run.stored);
 	expect(original).toContain(body);
-	expect(bigResult(run.requests[1]!)).toBe(original);
-	expect(bigResult(run.requests[2]!)).toBe(original);
-	const placeholder = bigResult(run.requests[3]!);
+	const req1 = run.requests[1];
+	const req2 = run.requests[2];
+	const req3 = run.requests[3];
+	const req4 = run.requests[4];
+	if (!req1 || !req2 || !req3 || !req4) {
+		throw new Error("expected 5 requests");
+	}
+	expect(bigResult(req1)).toBe(original);
+	expect(bigResult(req2)).toBe(original);
+	const placeholder = bigResult(req3);
 	expect(placeholder).toMatch(/^\[large tool result replaced/u);
 	expect(placeholder).toMatch(
 		scriptTool ? /tool: codemode/u : /tool: emit_output/u,
 	);
-	expect(bigResult(run.requests[4]!)).toBe(placeholder);
+	expect(bigResult(req4)).toBe(placeholder);
 	// Recall returns the original bytes.
-	const recall = run.requests[4]!.find(
-		(message) => message.toolCallId === "recall-1",
-	);
+	const recall = req4.find((message) => message.toolCallId === "recall-1");
 	expect(recall?.toolName).toBe(scriptTool ? "codemode" : "obs_recall");
 	expect(wireText(recall)).toMatch(
 		/^\[obs_recall id=obs_[a-f0-9]{24} offset=0 /mu,
@@ -926,13 +944,15 @@ function expectRealSessionPacking(
 		} = message as WireMessage & Record<string, unknown>;
 		return rest;
 	};
-	const finalRequest = run.requests[4]!;
+	const finalRequest = req4;
 	run.requests.forEach((request, requestIndex) => {
 		expect(roles(request)).toEqual(roles(run.stored).slice(0, request.length));
 		request.forEach((message, index) => {
 			if (message.role !== "system") return;
+			const storedMessage = run.stored[index];
+			if (!storedMessage) throw new Error(`missing stored message at ${index}`);
 			expect(withoutDeclarations(message)).toEqual(
-				withoutDeclarations(run.stored[index]!),
+				withoutDeclarations(storedMessage),
 			);
 			if (requestIndex >= 2) expect(message).toEqual(finalRequest[index]);
 		});

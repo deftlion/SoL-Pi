@@ -411,7 +411,14 @@ async function runCombinedSession(mode: CodemodeMode) {
 					loadSolPiConfig(ctx.cwd, agentDir, false),
 				),
 			},
-			{ name: `codemode-${mode}`, factory: createCodemodeExtension!({ mode }) },
+			...(createCodemodeExtension
+				? [
+						{
+							name: `codemode-${mode}`,
+							factory: createCodemodeExtension({ mode }),
+						},
+					]
+				: []),
 		],
 		noExtensions: true,
 		noSkills: true,
@@ -498,7 +505,7 @@ async function runCombinedSession(mode: CodemodeMode) {
 
 		const run = async (text: string) => {
 			prompt++;
-			await session!.prompt(text, {
+			await session?.prompt(text, {
 				expandPromptTemplates: false,
 				source: "interactive",
 			});
@@ -591,7 +598,7 @@ describe.skipIf(createCodemodeExtension === undefined)(
 				]);
 
 				// 2. Declarations.
-				const first = run.requests[0]!.tools;
+				const first = run.requests[0]?.tools ?? [];
 				const declared = (name: string) =>
 					first.find((tool) => tool.name === name);
 				const codemodeDescription = declared("codemode")?.description ?? "";
@@ -719,7 +726,7 @@ describe.skipIf(createCodemodeExtension === undefined)(
 					.map((entry) => wireText(resultIn(entry, "big-1")));
 				expect(bigSends[0]).toBe(bigOriginal);
 				expect(bigSends[1]).toBe(bigOriginal);
-				const placeholder = bigSends[2]!;
+				const placeholder = bigSends[2] ?? "";
 				expect(placeholder).toMatch(/^\[large tool result replaced/u);
 				expect(placeholder).toMatch(/tool: codemode/u);
 				for (const later of bigSends.slice(2)) expect(later).toBe(placeholder);
@@ -768,15 +775,18 @@ describe.skipIf(createCodemodeExtension === undefined)(
 					preCompaction.filter((entry) => entry.prompt > 1),
 				];
 				for (const group of loadouts) {
-					const last = group.at(-1)!.messages;
+					const last = group.at(-1)?.messages ?? [];
 					for (const entry of group) {
 						expect(roles(entry.messages)).toEqual(
 							roles(stored).slice(0, entry.messages.length),
 						);
 						entry.messages.forEach((message, index) => {
 							if (message.role !== "system") return;
+							const storedMessage = stored[index];
+							if (!storedMessage)
+								throw new Error(`missing stored message at ${index}`);
 							expect(withoutDeclarations(message)).toEqual(
-								withoutDeclarations(stored[index]!),
+								withoutDeclarations(storedMessage),
 							);
 							expect(message).toEqual(last[index]);
 						});
@@ -789,9 +799,10 @@ describe.skipIf(createCodemodeExtension === undefined)(
 				expect(wireText(resultIn(request(run, "reducer"), "big-1"))).toBe(
 					placeholder,
 				);
-				expect(request(run, "fusion").messages[delta!]?.role).toBe("system");
-				expect(request(run, "reducer").messages[delta!]).toEqual(
-					request(run, "fusion").messages[delta!],
+				if (delta === undefined) throw new Error("delta not found");
+				expect(request(run, "fusion").messages[delta]?.role).toBe("system");
+				expect(request(run, "reducer").messages[delta]).toEqual(
+					request(run, "fusion").messages[delta],
 				);
 
 				// 6. Online Context Compact: the direct update_plan boundary compacts and the task continues.

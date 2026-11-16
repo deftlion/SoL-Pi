@@ -198,9 +198,15 @@ describe("Action Fusion file URL paths", () => {
 					: { edits: [{ oldText: "before", newText: "after" }] }),
 				then_run: { command: "check target" },
 			};
-			const result = await tools
-				.get(name)!
-				.execute("file-url", input, undefined, undefined, context(cwd));
+			const tool = tools.get(name);
+			if (!tool) throw new Error(`${name} tool not registered`);
+			const result = await tool.execute(
+				"file-url",
+				input,
+				undefined,
+				undefined,
+				context(cwd),
+			);
 			expect(commands).toEqual(["check target"]);
 			expect(result.content).toContainEqual({
 				type: "text",
@@ -236,9 +242,15 @@ describe("Action Fusion file URL paths", () => {
 					: { edits: [{ oldText: "before", newText: "after" }] }),
 				then_run: { command: "check target" },
 			};
-			const result = await tools
-				.get(name)!
-				.execute("unicode-space", input, undefined, undefined, context(cwd));
+			const tool = tools.get(name);
+			if (!tool) throw new Error(`${name} tool not registered`);
+			const result = await tool.execute(
+				"unicode-space",
+				input,
+				undefined,
+				undefined,
+				context(cwd),
+			);
 			expect(commands).toEqual(["check target"]);
 			expect(result.content).toContainEqual({
 				type: "text",
@@ -251,19 +263,19 @@ describe("Action Fusion file URL paths", () => {
 	it("executes a real bash follow-up after writing through a file URL", async () => {
 		const cwd = await createTempDir();
 		const target = join(cwd, "real-command.txt");
-		const result = await loadTools()
-			.get("write")!
-			.execute(
-				"real-command",
-				{
-					path: pathToFileURL(target).href,
-					content: "written\n",
-					then_run: { command: "printf FILE_URL_THEN_RUN_OK" },
-				},
-				undefined,
-				undefined,
-				context(cwd),
-			);
+		const writeTool = loadTools().get("write");
+		if (!writeTool) throw new Error("write tool not registered");
+		const result = await writeTool.execute(
+			"real-command",
+			{
+				path: pathToFileURL(target).href,
+				content: "written\n",
+				then_run: { command: "printf FILE_URL_THEN_RUN_OK" },
+			},
+			undefined,
+			undefined,
+			context(cwd),
+		);
 		const output = result.content
 			.filter((block) => block.type === "text")
 			.map((block) => block.text)
@@ -307,7 +319,8 @@ describe("Action Fusion file URL paths", () => {
 				},
 			},
 		});
-		const write = tools.get("write")!;
+		const write = tools.get("write");
+		if (!write) throw new Error("write tool not registered");
 		const first = write.execute(
 			"url",
 			{
@@ -367,8 +380,10 @@ describe("Action Fusion file URL paths", () => {
 			},
 		});
 		const invalidUrl = `${pathToFileURL(cwd).href}/bad%2Fname.txt`;
+		const write = tools.get("write");
+		if (!write) throw new Error("write tool not registered");
 		await expect(
-			tools.get("write")!.execute(
+			write.execute(
 				"invalid",
 				{
 					path: invalidUrl,

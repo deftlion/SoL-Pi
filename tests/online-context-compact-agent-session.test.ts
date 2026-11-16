@@ -762,7 +762,9 @@ describe.skipIf(createCodemodeExtension === undefined)(
 						name: `codemode-${mode}`,
 						tools: ["read", "update_plan", "codemode"],
 						settings: { defaultTools: ["+codemode"], codemode: { mode } },
-						extensions: [createCodemodeExtension!({ mode })],
+						extensions: createCodemodeExtension
+							? [createCodemodeExtension({ mode })]
+							: [],
 						responses: [
 							fauxAssistantMessage(
 								fauxToolCall(

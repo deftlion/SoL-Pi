@@ -152,7 +152,7 @@ function collapseSystemMessages(
 				typeof message.content === "string" ? message.content : "",
 			)
 			.join("\n\n"),
-		timestamp: system[0]!.timestamp,
+		timestamp: system[0]?.timestamp ?? 0,
 		collapsedFrom: system.length,
 	} as unknown as AgentMessage;
 }

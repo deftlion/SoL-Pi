@@ -148,7 +148,10 @@ export function createActionFusionExtension(
 				return result;
 			},
 			renderCall: (args, theme, context) => {
-				const base = baseEdit(context.cwd).renderCall!(args, theme, context);
+				const base = baseEdit(context.cwd).renderCall?.(args, theme, context);
+				if (!base) {
+					throw new Error("base edit renderCall not available");
+				}
 				return showsSavingsBanner(args.then_run, context)
 					? renderSolPiTool(
 							theme,
@@ -159,12 +162,15 @@ export function createActionFusionExtension(
 					: base;
 			},
 			renderResult: (result, resultOptions, theme, context) => {
-				const base = baseEdit(context.cwd).renderResult!(
+				const base = baseEdit(context.cwd).renderResult?.(
 					result,
 					resultOptions,
 					theme,
 					context,
 				);
+				if (!base) {
+					throw new Error("base edit renderResult not available");
+				}
 				return showsSavingsBanner(context.args.then_run, context)
 					? renderSolPiTool(
 							theme,
@@ -203,7 +209,10 @@ export function createActionFusionExtension(
 				return result;
 			},
 			renderCall: (args, theme, context) => {
-				const base = baseWrite(context.cwd).renderCall!(args, theme, context);
+				const base = baseWrite(context.cwd).renderCall?.(args, theme, context);
+				if (!base) {
+					throw new Error("base write renderCall not available");
+				}
 				return showsSavingsBanner(args.then_run, context)
 					? renderSolPiTool(
 							theme,
@@ -214,12 +223,15 @@ export function createActionFusionExtension(
 					: base;
 			},
 			renderResult: (result, resultOptions, theme, context) => {
-				const base = baseWrite(context.cwd).renderResult!(
+				const base = baseWrite(context.cwd).renderResult?.(
 					result,
 					resultOptions,
 					theme,
 					context,
 				);
+				if (!base) {
+					throw new Error("base write renderResult not available");
+				}
 				return showsSavingsBanner(context.args.then_run, context)
 					? renderSolPiTool(
 							theme,

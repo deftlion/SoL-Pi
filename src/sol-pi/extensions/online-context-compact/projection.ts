@@ -96,8 +96,10 @@ export function projectedEntryTokens(
 		)
 			continue;
 		for (let index = 0; index < ids.length; index++) {
-			const id = ids[index]!;
-			tokens.set(id, (tokens.get(id) ?? 0) + sizes[index]!);
+			const id = ids[index];
+			const size = sizes[index];
+			if (id === undefined || size === undefined) continue;
+			tokens.set(id, (tokens.get(id) ?? 0) + size);
 		}
 	}
 	return tokens;
