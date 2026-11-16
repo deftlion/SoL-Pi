@@ -72,11 +72,11 @@ SoL-Pi uses the models and logins of your own Pi. `sol-pi-run` links
 the directory) into its own agent directory, so a provider or `/login` you set up
 in Pi works here too.
 
-| Setting | Source |
-| --- | --- |
-| Main model | `-m provider/model`, else `SOL_PI_MODEL`, else `defaultProvider`/`defaultModel` in your Pi `settings.json`, else Pi's own choice |
-| Effort | `-t off\|minimal\|low\|medium\|high\|xhigh\|max`, default `high` |
-| Reducer model | SoL-Pi's built-in route; `sol-pi-run setup --reducer provider/model` changes it |
+| Setting       | Source                                                                                                                           |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Main model    | `-m provider/model`, else `SOL_PI_MODEL`, else `defaultProvider`/`defaultModel` in your Pi `settings.json`, else Pi's own choice |
+| Effort        | `-t off\|minimal\|low\|medium\|high\|xhigh\|max`, default `high`                                                                 |
+| Reducer model | SoL-Pi's built-in route; `sol-pi-run setup --reducer provider/model` changes it                                                  |
 
 `sol-pi-run models [search]` prints the default model, the reducer, and the
 models Pi can use. `doctor` checks that both the default model and the reducer
@@ -110,15 +110,15 @@ $0.
 keeps `~/.sol-pi/runs/<id>/` with `prompt.md` (exactly what SoL-Pi received),
 `events.jsonl`, `stderr.log`, `result.json` and the Pi session.
 
-| Path | Purpose |
-| --- | --- |
-| `bin/sol-pi-run` | Installs the pinned Pi, registers this checkout, writes the config, runs and summarises tasks, and implements the hooks |
-| `bin/sol-pi-context` | Exports a Claude Code or Codex transcript as prefix context |
-| `claude-plugin/` | Claude Code marketplace with the `sol-pi` plugin: `/sol-pi` skill and hooks |
-| `codex-skill/sol-pi/` | Codex skill (`$sol-pi`, and for delegating subtasks) |
-| `codex-hooks/hooks.json` | Codex prompt hooks |
-| `probe/sol-pi-probe.ts` | Helper extension: load check for `doctor`, reducer prices for the cost summary (no model call) |
-| `tests/` | `python3 -m unittest discover -s examples/sol-pi-skill/tests` |
+| Path                     | Purpose                                                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `bin/sol-pi-run`         | Installs the pinned Pi, registers this checkout, writes the config, runs and summarises tasks, and implements the hooks |
+| `bin/sol-pi-context`     | Exports a Claude Code or Codex transcript as prefix context                                                             |
+| `claude-plugin/`         | Claude Code marketplace with the `sol-pi` plugin: `/sol-pi` skill and hooks                                             |
+| `codex-skill/sol-pi/`    | Codex skill (`$sol-pi`, and for delegating subtasks)                                                                    |
+| `codex-hooks/hooks.json` | Codex prompt hooks                                                                                                      |
+| `probe/sol-pi-probe.ts`  | Helper extension: load check for `doctor`, reducer prices for the cost summary (no model call)                          |
+| `tests/`                 | `python3 -m unittest discover -s examples/sol-pi-skill/tests`                                                           |
 
 ## Notes
 

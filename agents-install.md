@@ -89,14 +89,14 @@ SoL-Pi defaults every mechanism to disabled. For this managed installation, crea
 
 ```json
 {
-  "version": 1,
-  "actionFusion": true,
-  "observationPack": true,
-  "evidencePreservingReducer": true,
-  "evidencePreservingReducerProvider": "provider-id",
-  "evidencePreservingReducerModel": "model-id",
-  "onlineContextCompact": true,
-  "cacheWriteReadRatio": 12.5
+	"version": 1,
+	"actionFusion": true,
+	"observationPack": true,
+	"evidencePreservingReducer": true,
+	"evidencePreservingReducerProvider": "provider-id",
+	"evidencePreservingReducerModel": "model-id",
+	"onlineContextCompact": true,
+	"cacheWriteReadRatio": 12.5
 }
 ```
 

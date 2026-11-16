@@ -16,14 +16,14 @@ The project file replaces the global file. SoL-Pi does not merge them.
 
 ```json
 {
-  "version": 1,
-  "actionFusion": false,
-  "observationPack": false,
-  "evidencePreservingReducer": false,
-  "evidencePreservingReducerProvider": "provider-id",
-  "evidencePreservingReducerModel": "model-id",
-  "onlineContextCompact": false,
-  "cacheWriteReadRatio": 12.5
+	"version": 1,
+	"actionFusion": false,
+	"observationPack": false,
+	"evidencePreservingReducer": false,
+	"evidencePreservingReducerProvider": "provider-id",
+	"evidencePreservingReducerModel": "model-id",
+	"onlineContextCompact": false,
+	"cacheWriteReadRatio": 12.5
 }
 ```
 
@@ -75,7 +75,7 @@ For native Windows with Git for Windows installed outside the default directorie
 
 ```json
 {
-  "shellPath": "D:/Tools/Git/bin/bash.exe"
+	"shellPath": "D:/Tools/Git/bin/bash.exe"
 }
 ```
 

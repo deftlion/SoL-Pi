@@ -40,12 +40,12 @@ The standalone release contains four mechanisms that survived that process. They
 
 ## What SoL-Pi Adds
 
-| Area | Mechanism | What changes |
-|---|---|---|
-| Tools | **Action Fusion** | An edit or write can run its follow-up validation command in the same tool call. |
-| Observations | **ObservationPack** | Repeated large text results become stable handles with exact paged recall. |
-| Delegation | **Evidence-Preserving Reducer** | Long diagnostic logs become compact receipts only when every retained quotation matches the archived source. |
-| Context | **Online Context Compact** | Completed plan steps become candidate points for Pi's native compaction, subject to economic and window-pressure checks; after a successful compaction, Pi continues the task in a new turn. |
+| Area         | Mechanism                       | What changes                                                                                                                                                                                 |
+| ------------ | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tools        | **Action Fusion**               | An edit or write can run its follow-up validation command in the same tool call.                                                                                                             |
+| Observations | **ObservationPack**             | Repeated large text results become stable handles with exact paged recall.                                                                                                                   |
+| Delegation   | **Evidence-Preserving Reducer** | Long diagnostic logs become compact receipts only when every retained quotation matches the archived source.                                                                                 |
+| Context      | **Online Context Compact**      | Completed plan steps become candidate points for Pi's native compaction, subject to economic and window-pressure checks; after a successful compaction, Pi continues the task in a new turn. |
 
 The mechanisms share four rules:
 
@@ -105,12 +105,12 @@ The following conservative configuration enables only the two local mechanisms t
 
 ```json
 {
-  "version": 1,
-  "actionFusion": true,
-  "observationPack": true,
-  "evidencePreservingReducer": false,
-  "onlineContextCompact": false,
-  "cacheWriteReadRatio": 12.5
+	"version": 1,
+	"actionFusion": true,
+	"observationPack": true,
+	"evidencePreservingReducer": false,
+	"onlineContextCompact": false,
+	"cacheWriteReadRatio": 12.5
 }
 ```
 
@@ -149,11 +149,11 @@ Evidence-Preserving Reducer may send eligible diagnostic-log content to its conf
 
 ## Documentation
 
-| Document | Purpose |
-|---|---|
-| [Configuration](docs/configuration.md) | Config search order, schema, defaults, and trust behavior |
-| [Compatibility](docs/compatibility.md) | Supported Pi APIs and standalone integration details |
-| [Security](SECURITY.md) | Local storage, remote reduction, and sensitive behavior |
+| Document                                | Purpose                                                        |
+| --------------------------------------- | -------------------------------------------------------------- |
+| [Configuration](docs/configuration.md)  | Config search order, schema, defaults, and trust behavior      |
+| [Compatibility](docs/compatibility.md)  | Supported Pi APIs and standalone integration details           |
+| [Security](SECURITY.md)                 | Local storage, remote reduction, and sensitive behavior        |
 | [Agent installation](agents-install.md) | Reproducible installation and all-enabled validation procedure |
 
 ## Development

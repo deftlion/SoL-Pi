@@ -23,10 +23,10 @@ If the file already exists, update its switches instead of replacing it.
 
 ```json
 {
-  "version": 1,
-  "localEditScope": true,
-  "magnify": true,
-  "awaitRender": true
+	"version": 1,
+	"localEditScope": true,
+	"magnify": true,
+	"awaitRender": true
 }
 ```
 
@@ -49,11 +49,11 @@ Give the agent a reference video or images and a task, for example:
 > a camera walkthrough. Compare the renders with the reference, inspect unclear
 > regions with magnify, and refine the scene.
 
-| Setting | Effect |
-| --- | --- |
-| `localEditScope` | Focus each edit on one visual discrepancy while keeping the whole-scene requirements. |
-| `magnify` | Crop a reference image or render for closer inspection. |
-| `awaitRender` | Wait for render/build results when there is no independent work, reducing polling-only turns. |
+| Setting          | Effect                                                                                        |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| `localEditScope` | Focus each edit on one visual discrepancy while keeping the whole-scene requirements.         |
+| `magnify`        | Crop a reference image or render for closer inspection.                                       |
+| `awaitRender`    | Wait for render/build results when there is no independent work, reducing polling-only turns. |
 
 All switches default to `false`. They only take effect in a trusted project;
 restart Pi after changing them. Settings stay in `solpi-visual.json`, separate
@@ -63,7 +63,7 @@ in `sol-pi-examples/solpi-visual/`; temporary sessions use a private temp direct
 A `magnify` call uses pixel coordinates `[left, top, right, bottom]`:
 
 ```json
-{"image":"renders/front.png","bbox":[120,80,260,240],"scale":2}
+{ "image": "renders/front.png", "bbox": [120, 80, 260, 240], "scale": 2 }
 ```
 
 For paired inspection, add `reference` and `referenceBbox`. Inputs must be PNG/JPEG;
