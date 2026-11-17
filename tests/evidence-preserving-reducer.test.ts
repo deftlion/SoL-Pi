@@ -4,6 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import * as fs from "node:fs/promises";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
@@ -16,12 +17,16 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { archiveBody } from "../src/sol-pi/extensions/evidence-preserving-reducer/archive.ts";
-import { detailsFullOutputPath } from "../src/sol-pi/extensions/evidence-preserving-reducer/candidate.ts";
+import {
+	detailsFullOutputPath,
+	reducibleToolResult,
+} from "../src/sol-pi/extensions/evidence-preserving-reducer/candidate.ts";
 import {
 	createEvidencePreservingReducerExtension,
 	DIAGNOSTIC_COMMAND,
 	loadReducerConfig,
 	REDUCER_RECEIPT_SCHEMA,
+	reduceToolResult,
 } from "../src/sol-pi/extensions/evidence-preserving-reducer/index.ts";
 import {
 	type CompatComplete,
@@ -34,6 +39,11 @@ import {
 	fakeContext,
 	fakeToolContext,
 } from "./helpers.ts";
+
+// Native Node namespaces are sealed; provide mutable exports for test spies.
+vi.mock(import("node:fs/promises"), async (importOriginal) => ({
+	...(await importOriginal()),
+}));
 
 const cleanupPaths: string[] = [];
 
@@ -85,6 +95,7 @@ interface CapturedCall {
 
 afterEach(async () => {
 	vi.useRealTimers();
+	vi.restoreAllMocks();
 	await Promise.all(
 		cleanupPaths
 			.splice(0)
@@ -706,6 +717,133 @@ describe("evidence-preserving reducer", () => {
 		]);
 	});
 
+	it.each(["bash", "write"])(
+		"does not read an external log for a non-diagnostic %s command",
+		async (toolName) => {
+			const root = await storeRoot();
+			const outputPath = join(tmpdir(), `pi-bash-${randomUUID()}.log`);
+			await writeFile(outputPath, "unrelated command output");
+			cleanupPaths.push(outputPath);
+			const { context, manager, pi } = load(root, async () => {
+				throw new Error("unexpected model call");
+			});
+			const event =
+				toolName === "bash"
+					? bashEvent("preview")
+					: fusedEvent("preview", true);
+			event.input =
+				toolName === "bash"
+					? { command: "printf data" }
+					: { path: "target.ts", then_run: { command: "printf data" } };
+			event.details = { fullOutputPath: outputPath };
+			const read = vi.spyOn(fs, "readFile");
+			const open = vi.spyOn(fs, "open");
+			const resolve = vi.spyOn(fs, "realpath");
+
+			expect(await pi.emit("tool_result", event, context)).toBeUndefined();
+			expect(read).not.toHaveBeenCalled();
+			expect(open).not.toHaveBeenCalled();
+			expect(resolve).not.toHaveBeenCalled();
+			expect(manager.customEntryData()).toEqual([]);
+		},
+	);
+
+	it.each(["a", "☾"])(
+		"bounds external log reads before rejecting oversized %s output",
+		async (character) => {
+			const root = await storeRoot();
+			const maxChars = 64;
+			const outputPath = join(tmpdir(), `pi-bash-${randomUUID()}.log`);
+			await writeFile(outputPath, character.repeat(maxChars + 1));
+			cleanupPaths.push(outputPath);
+			const { context } = load(root, async () => {
+				throw new Error("unexpected model call");
+			});
+			const probe = await fs.open(outputPath, "r");
+			const prototype = Object.getPrototypeOf(probe);
+			await probe.close();
+			const read = vi.spyOn(prototype, "read");
+			const readFile = vi.spyOn(fs, "readFile");
+			const handleReadFile = vi.spyOn(prototype, "readFile");
+			const journal = vi.fn();
+
+			expect(
+				await reduceToolResult(
+					journal,
+					{ ...loadReducerConfig(root), maxChars, minBytes: 0 },
+					bashEvent("preview", {
+						isError: false,
+						details: { fullOutputPath: outputPath },
+					}),
+					context,
+				),
+			).toBeUndefined();
+			expect(readFile).not.toHaveBeenCalled();
+			expect(handleReadFile).not.toHaveBeenCalled();
+			for (const [buffer, , length] of read.mock.calls) {
+				if (!Buffer.isBuffer(buffer))
+					throw new Error("Expected a bounded Buffer read");
+				expect(buffer.byteLength).toBeLessThanOrEqual(maxChars * 3 + 1);
+				expect(length).toBeLessThanOrEqual(maxChars * 3 + 1);
+			}
+			expect(journal).toHaveBeenCalledWith(
+				"fallback",
+				expect.objectContaining({ reason: "source-over-max-chars", maxChars }),
+			);
+		},
+	);
+
+	it.each(["a", "☾", "😀"])(
+		"accepts an external log at the UTF-16 character limit: %s",
+		async (character) => {
+			const maxChars = 64;
+			const body = character.repeat(maxChars / character.length);
+			const outputPath = join(tmpdir(), `pi-bash-${randomUUID()}.log`);
+			await writeFile(outputPath, body);
+			cleanupPaths.push(outputPath);
+			const candidate = await reducibleToolResult(
+				bashEvent("preview", { details: { fullOutputPath: outputPath } }),
+			);
+
+			expect(candidate).toBeDefined();
+			expect(await candidate?.loadBody(maxChars)).toBe(body);
+		},
+	);
+
+	it("bounds a log that grows after stat and closes its handle", async () => {
+		const maxChars = 64;
+		const maxBytes = maxChars * 3;
+		const outputPath = join(tmpdir(), `pi-bash-${randomUUID()}.log`);
+		await writeFile(outputPath, "a".repeat(maxChars));
+		cleanupPaths.push(outputPath);
+		const handle = await fs.open(outputPath, "r");
+		try {
+			const status = await handle.stat();
+			vi.spyOn(handle, "stat").mockImplementationOnce(async () => {
+				await fs.appendFile(outputPath, "b".repeat(maxBytes * 4));
+				return status;
+			});
+			vi.spyOn(fs, "open").mockResolvedValueOnce(handle);
+			const read = vi.spyOn(handle, "read");
+			const close = vi.spyOn(handle, "close");
+			const candidate = await reducibleToolResult(
+				bashEvent("preview", { details: { fullOutputPath: outputPath } }),
+			);
+
+			expect(candidate).toBeDefined();
+			expect(await candidate?.loadBody(maxChars)).toBeUndefined();
+			const reads = await Promise.all(
+				read.mock.results.map((result) => result.value),
+			);
+			expect(reads.reduce((total, result) => total + result.bytesRead, 0)).toBe(
+				maxBytes + 1,
+			);
+			expect(close).toHaveBeenCalledOnce();
+		} finally {
+			await handle.close();
+		}
+	});
+
 	it("checks the exit status on the inline text before reading the full-output file", async () => {
 		const root = await storeRoot();
 		const fullBody = `ERROR full output\n${"full diagnostic\n".repeat(400)}`;
@@ -726,8 +864,12 @@ describe("evidence-preserving reducer", () => {
 			],
 			details: { fullOutputPath: outputPath },
 		} as ToolResultEvent;
+		const read = vi.spyOn(fs, "readFile");
+		const open = vi.spyOn(fs, "open");
 
 		expect(await pi.emit("tool_result", event, context)).toBeUndefined();
+		expect(read).not.toHaveBeenCalled();
+		expect(open).not.toHaveBeenCalled();
 		expect(calls).toBe(0);
 		expect(manager.customEntryData()).toContainEqual(
 			expect.objectContaining({

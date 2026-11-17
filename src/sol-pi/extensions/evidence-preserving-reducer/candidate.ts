@@ -2,7 +2,8 @@
  * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: MIT
  */
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname } from "node:path";
 import type { ToolResultEvent } from "@earendil-works/pi-coding-agent";
@@ -16,7 +17,8 @@ const EXIT_STATUS_LINE = /(?:^|\n)Command exited with code (-?\d+)\s*$/u;
 
 export interface ReducibleToolResult {
 	readonly command: string;
-	readonly body: string;
+	/** Load exact output only after eligibility checks; undefined means over the limit. */
+	readonly loadBody: (maxChars: number) => Promise<string | undefined>;
 	/**
 	 * Whether the result itself reports a failed command: a non-zero exit code or
 	 * a `[then_run:failed]` marker. `undefined` when the result carries no signal.
@@ -82,13 +84,44 @@ function structuredExitCode(event: ToolResultEvent): number | undefined {
 async function exactBodyFromInline(
 	inline: string,
 	details: unknown,
-): Promise<string> {
+	maxChars: number,
+): Promise<string | undefined> {
 	const detailsPath = detailsFullOutputPath(details);
 	const inlineMatch = inline.match(/Full output:\s*([^\]\r\n]+)/u);
 	const candidate = detailsPath ?? inlineMatch?.[1]?.trim();
 	if (!candidate || !(await safePiBashTempPath(candidate))) return inline;
 	try {
-		return await readFile(candidate, "utf8");
+		const handle = await open(
+			candidate,
+			constants.O_RDONLY | constants.O_NOFOLLOW,
+		);
+		try {
+			const status = await handle.stat();
+			if (!status.isFile()) return inline;
+			// A UTF-16 code unit needs at most three UTF-8 bytes. Keep the
+			// character-based limit without rejecting valid multibyte output.
+			const maxBytes = maxChars * 3;
+			if (status.size > maxBytes) return undefined;
+			// Stat is only an early rejection: the file can grow or reads can be
+			// short. Bound the actual reads, including one overflow-detection byte.
+			const buffer = Buffer.alloc(maxBytes + 1);
+			let total = 0;
+			while (total < buffer.length) {
+				const { bytesRead } = await handle.read(
+					buffer,
+					total,
+					buffer.length - total,
+					total,
+				);
+				if (bytesRead === 0) break;
+				total += bytesRead;
+			}
+			if (total > maxBytes) return undefined;
+			const body = buffer.toString("utf8", 0, total);
+			return body.length > maxChars ? undefined : body;
+		} finally {
+			await handle.close();
+		}
 	} catch {
 		return inline;
 	}
@@ -113,7 +146,8 @@ export async function reducibleToolResult(
 		const exitCode = structuredExitCode(event);
 		return {
 			command,
-			body: await exactBodyFromInline(inline, event.details),
+			loadBody: (maxChars) =>
+				exactBodyFromInline(inline, event.details, maxChars),
 			exitFailed:
 				exitCode !== undefined ? exitCode !== 0 : inlineExitFailed(inline),
 			projectReceipt: (receipt) => [{ type: "text", text: receipt }],
@@ -144,7 +178,8 @@ export async function reducibleToolResult(
 		);
 		return {
 			command: commandValue,
-			body: await exactBodyFromInline(inline, event.details),
+			loadBody: (maxChars) =>
+				exactBodyFromInline(inline, event.details, maxChars),
 			// Fused results carry no structured exit code, so pi's status line is
 			// also trusted over a succeeded marker. This is deliberately conservative:
 			// a passing command whose own last line reads `Command exited with code N`

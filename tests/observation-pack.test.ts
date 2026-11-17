@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 import { createHash } from "node:crypto";
+import { constants } from "node:fs";
+import * as fs from "node:fs/promises";
 import {
 	mkdir,
 	mkdtemp,
@@ -47,6 +49,11 @@ import {
 	fakeToolContext,
 	plainTheme,
 } from "./helpers.ts";
+
+// Native Node namespaces are sealed; provide mutable exports for test spies.
+vi.mock(import("node:fs/promises"), async (importOriginal) => ({
+	...(await importOriginal()),
+}));
 
 const roots: string[] = [];
 const SESSION_ID = "session-a";
@@ -331,6 +338,166 @@ describe("observation pack", () => {
 		).toBe(body);
 	});
 
+	it("rebuilds a missing observation from compacted history after a real session fork", async () => {
+		const cwd = await sessionRoot();
+		const manager = SessionManager.create(cwd, join(cwd, "sessions"));
+		const body = `inherited observation\n${repeatPastThreshold("original bytes\n")}`;
+		const message = toolResult(body);
+		const id = observationId(message);
+		manager.appendMessage({
+			role: "user",
+			content: "Read the log",
+			timestamp: 0,
+		});
+		manager.appendMessage(message);
+		const kept = manager.appendMessage({
+			role: "user",
+			content: `Continue using ${id}`,
+			timestamp: 2,
+		});
+		const context = fakeContext(cwd, { sessionManager: manager });
+		await observationPackPi().emitContext([message], context);
+		const parentRoot = runtimeRoot(context);
+		const compaction = manager.appendCompaction(`Remember ${id}`, kept, 10_000);
+		manager.createBranchedSession(compaction);
+		const forkRoot = runtimeRoot(context);
+		expect(forkRoot).not.toBe(parentRoot);
+
+		const projected = manager.buildSessionContext().messages;
+		expect(projected.some((entry) => entry.role === "toolResult")).toBe(false);
+		const forkPi = observationPackPi();
+		await forkPi.emitContext(projected, context);
+		const forkPath = join(forkRoot, "observation-pack", "objects", `${id}.txt`);
+		await expect(readFile(forkPath, "utf8")).rejects.toMatchObject({
+			code: "ENOENT",
+		});
+
+		const recalled = await Promise.all(
+			[0, 9, 0].map(async (offset, index) => ({
+				offset,
+				result: await forkPi
+					.tool("obs_recall")
+					.execute(
+						`recall-fork-${index}`,
+						{ id, offset },
+						undefined,
+						undefined,
+						fakeToolContext(cwd, { sessionManager: manager }),
+					),
+			})),
+		);
+		for (const { offset, result } of recalled) {
+			expect(result.content).toContainEqual(
+				expect.objectContaining({
+					type: "text",
+					text: expect.stringContaining(body.slice(offset, offset + 100)),
+				}),
+			);
+		}
+		expect(await readFile(forkPath, "utf8")).toBe(body);
+		expect(
+			await readFile(
+				join(parentRoot, "observation-pack", "objects", `${id}.txt`),
+				"utf8",
+			),
+		).toBe(body);
+	});
+
+	it("keeps a partial restoration private and retries a failed write", async () => {
+		const cwd = await sessionRoot();
+		const manager = SessionManager.create(cwd, join(cwd, "sessions"));
+		// Keep the fixture within one recall page so EOF proves complete recovery.
+		const body = repeatPastThreshold("recovered bytes ");
+		const message = toolResult(body);
+		manager.appendMessage(message);
+		const id = observationId(message);
+		const root = runtimeRoot(fakeContext(cwd, { sessionManager: manager }));
+		const objects = join(root, "observation-pack", "objects");
+		const path = join(objects, `${id}.txt`);
+		const failure = Object.assign(new Error("Simulated partial write"), {
+			code: "ENOSPC",
+		});
+		const originalOpen = fs.open;
+		let failNextWrite = true;
+		let exposedPartial = false;
+		vi.spyOn(fs, "open").mockImplementation(async (file, flags, mode) => {
+			const handle = await originalOpen(file, flags, mode);
+			if (
+				failNextWrite &&
+				typeof flags === "number" &&
+				(flags & constants.O_WRONLY) !== 0
+			) {
+				failNextWrite = false;
+				const write = handle.writeFile.bind(handle);
+				vi.spyOn(handle, "writeFile").mockImplementationOnce(async () => {
+					await write(body.slice(0, 12), { encoding: "utf8" });
+					try {
+						await readFile(path, "utf8");
+						exposedPartial = true;
+					} catch (error) {
+						expect(error).toMatchObject({ code: "ENOENT" });
+					}
+					throw failure;
+				});
+			}
+			return handle;
+		});
+		const pi = observationPackPi();
+		const [first, second] = await Promise.allSettled(
+			[0, 1].map((index) =>
+				pi
+					.tool("obs_recall")
+					.execute(
+						`recall-write-failure-${index}`,
+						{ id, offset: 0 },
+						undefined,
+						undefined,
+						fakeToolContext(cwd, { sessionManager: manager }),
+					),
+			),
+		);
+
+		expect(first).toMatchObject({ status: "rejected", reason: failure });
+		expect(second).toMatchObject({
+			status: "fulfilled",
+			value: { details: { bytes: Buffer.byteLength(body), eof: true } },
+		});
+		expect(exposedPartial).toBe(false);
+		expect(await readFile(path, "utf8")).toBe(body);
+		expect(await fs.readdir(objects)).toEqual([`${id}.txt`]);
+	});
+
+	it("does not rebuild an observation from a different session-tree branch", async () => {
+		const cwd = await sessionRoot();
+		const manager = SessionManager.create(cwd, join(cwd, "sessions"));
+		const branchPoint = manager.appendMessage({
+			role: "user",
+			content: "Choose a branch",
+			timestamp: 0,
+		});
+		const message = toolResult(repeatPastThreshold("other branch bytes\n"));
+		manager.appendMessage(message);
+		manager.branch(branchPoint);
+		manager.appendMessage({
+			role: "user",
+			content: "Other task",
+			timestamp: 2,
+		});
+		const id = observationId(message);
+
+		await expect(
+			observationPackPi()
+				.tool("obs_recall")
+				.execute(
+					"recall-unrelated",
+					{ id, offset: 0 },
+					undefined,
+					undefined,
+					fakeToolContext(cwd, { sessionManager: manager }),
+				),
+		).rejects.toThrow(`Unknown observation id: ${id}`);
+	});
+
 	it("breaks the prefix once per observation without remutating older placeholders", async () => {
 		const sessionDir = await sessionRoot();
 		const pi = observationPackPi();
@@ -504,6 +671,50 @@ describe("observation pack", () => {
 			),
 		).toBe(true);
 	});
+
+	it.each(["same", "different"] as const)(
+		"verifies %s content published by a competing writer",
+		async (content) => {
+			const sessionDir = await sessionRoot();
+			const body = repeatPastThreshold("publication race\n");
+			const message = toolResult(body);
+			const id = observationId(message);
+			const existing =
+				content === "same" ? body : "x".repeat(Buffer.byteLength(body));
+			const originalLink = fs.link;
+			const link = vi
+				.spyOn(fs, "link")
+				.mockImplementationOnce(async (from, to) => {
+					await writeFile(to, existing);
+					await originalLink(from, to);
+				});
+			const errors = captureConsoleErrors();
+
+			const projected = await project(
+				observationPackPi(),
+				message,
+				sessionDir,
+				3,
+			);
+
+			expect(link).toHaveBeenCalledOnce();
+			expect(await readFile(observationPath(sessionDir, id), "utf8")).toBe(
+				existing,
+			);
+			expect(await fs.readdir(observationObjectsDirectory(sessionDir))).toEqual(
+				[`${id}.txt`],
+			);
+			if (content === "same") {
+				expect(projected[2]).toMatch(new RegExp(`id: ${id}`, "u"));
+				expect(errors).toEqual([]);
+			} else {
+				expect(projected).toEqual([body, body, body]);
+				expect(errors.some((error) => error.includes("hash mismatch"))).toBe(
+					true,
+				);
+			}
+		},
+	);
 
 	it("accepts an existing same-content object as idempotent storage", async () => {
 		const sessionDir = await sessionRoot();
