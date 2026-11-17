@@ -4,7 +4,7 @@
  */
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { type FileHandle, lstat, mkdir, open } from "node:fs/promises";
+import { type FileHandle, link, lstat, mkdir, mkdtemp, open, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { TextContent, ToolResultMessage } from "@earendil-works/pi-ai";
@@ -116,9 +116,44 @@ export function createObservation(message: ToolResultMessage, runtimeRoot: strin
 	};
 }
 
+async function verifyStoredObservation(
+	observation: Observation,
+): Promise<boolean> {
+	let handle: FileHandle;
+	try {
+		handle = await open(observation.filePath, READ_OBJECT_FLAGS);
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "ENOENT")
+			return false;
+		throw error;
+	}
+	try {
+		const existing = await handle.stat();
+		if (!existing.isFile()) {
+			throw new Error(
+				`Content-addressed observation is not a regular file for ${observation.id}`,
+			);
+		}
+		if (existing.size !== observation.bytes) {
+			throw new Error(
+				`Content-addressed observation size mismatch for ${observation.id}`,
+			);
+		}
+		const content = await handle.readFile();
+		if (hash(content) !== observation.contentHash) {
+			throw new Error(
+				`Content-addressed observation hash mismatch for ${observation.id}`,
+			);
+		}
+		return true;
+	} finally {
+		await handle.close();
+	}
+}
+
 /**
- * Write the payload to its content-addressed path, refusing symlinks and
- * verifying an existing object byte for byte before reusing it.
+ * Publish only complete payloads, refusing symlinks and verifying an existing
+ * object byte for byte before reusing it.
  */
 export async function ensureStored(observation: Observation): Promise<void> {
 	const directoryPath = dirname(observation.filePath);
@@ -128,30 +163,31 @@ export async function ensureStored(observation: Observation): Promise<void> {
 		throw new Error(`Observation directory is not a regular directory for ${observation.id}`);
 	}
 
-	let handle: FileHandle | undefined;
+	if (await verifyStoredObservation(observation)) return;
+
+	const stagingDirectory = await mkdtemp(join(directoryPath, ".staging-"));
 	try {
-		handle = await open(observation.filePath, CREATE_OBJECT_FLAGS, 0o600);
-		await handle.writeFile(observation.text, { encoding: "utf8" });
-	} catch (error) {
-		if (!(error instanceof Error) || !("code" in error) || error.code !== "EEXIST") throw error;
-		const existingHandle = await open(observation.filePath, READ_OBJECT_FLAGS);
+		const stagingPath = join(stagingDirectory, "object");
+		const handle = await open(stagingPath, CREATE_OBJECT_FLAGS, 0o600);
 		try {
-			const existing = await existingHandle.stat();
-			if (!existing.isFile()) {
-				throw new Error(`Content-addressed observation is not a regular file for ${observation.id}`);
-			}
-			if (existing.size !== observation.bytes) {
-				throw new Error(`Content-addressed observation size mismatch for ${observation.id}`);
-			}
-			const existingContent = await existingHandle.readFile();
-			if (hash(existingContent) !== observation.contentHash) {
-				throw new Error(`Content-addressed observation hash mismatch for ${observation.id}`);
-			}
+			await handle.writeFile(observation.text, { encoding: "utf8" });
 		} finally {
-			await existingHandle.close();
+			await handle.close();
+		}
+		try {
+			// Unlike rename, link publishes atomically without replacing an object.
+			await link(stagingPath, observation.filePath);
+		} catch (error) {
+			if (
+				!(error instanceof Error) ||
+				!("code" in error) ||
+				error.code !== "EEXIST" ||
+				!(await verifyStoredObservation(observation))
+			)
+				throw error;
 		}
 	} finally {
-		await handle?.close();
+		await rm(stagingDirectory, { recursive: true, force: true });
 	}
 }
 

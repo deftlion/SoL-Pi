@@ -55,10 +55,28 @@ const RECALL_LIMITS = {
 	maxLines: RECALL_MAX_LINES - RECALL_HEADER_LINES,
 };
 
+async function restoreObservation(
+	ctx: ExtensionContext,
+	root: string,
+	id: string,
+): Promise<boolean> {
+	// Compaction hides old results from provider context, not the retained
+	// branch. Rebuild only from this ancestry, never another branch or archive.
+	for (const entry of ctx.sessionManager.getBranch()) {
+		if (entry.type !== "message" || !isPureTextResult(entry.message)) continue;
+		const observation = createObservation(entry.message, root);
+		if (observation?.id !== id) continue;
+		await ensureStored(observation);
+		return true;
+	}
+	return false;
+}
+
 export function createObservationPackExtension(): ExtensionFactory {
 	return (pi: ExtensionAPI) => {
 		const sentCounts = new Map<string, number>();
 		const ledgers = new Map<string, Ledger>();
+		const recallTails = new Map<string, Promise<void>>();
 		const ledgerFor = (ctx: ExtensionContext): Ledger => {
 			const root = runtimeRoot(ctx);
 			let ledger = ledgers.get(root);
@@ -82,14 +100,34 @@ export function createObservationPackExtension(): ExtensionFactory {
 			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 				if (!isObservationId(params.id)) throw new Error(`Unknown observation id: ${params.id}`);
 				const offset = params.offset ?? 0;
+				const root = runtimeRoot(ctx);
+				const path = observationPath(root, params.id);
+				// Queue before reading: a parallel recall must not see a partially
+				// written restored object, even if its open succeeds during recovery.
+				const previous = recallTails.get(path) ?? Promise.resolve();
+				let release!: () => void;
+				const owned = new Promise<void>((resolve) => {
+					release = resolve;
+				});
+				const tail = previous.then(() => owned);
+				recallTails.set(path, tail);
+				await previous;
 				let chunk: RecallChunk;
 				try {
-					chunk = await readRecallChunk(observationPath(runtimeRoot(ctx), params.id), offset, RECALL_LIMITS);
-				} catch (error) {
-					if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-						throw new Error(`Unknown observation id: ${params.id}`);
+					try {
+						chunk = await readRecallChunk(path, offset, RECALL_LIMITS);
+					} catch (error) {
+						if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") {
+							throw error;
+						}
+						if (!(await restoreObservation(ctx, root, params.id))) {
+							throw new Error(`Unknown observation id: ${params.id}`);
+						}
+						chunk = await readRecallChunk(path, offset, RECALL_LIMITS);
 					}
-					throw error;
+				} finally {
+					release();
+					if (recallTails.get(path) === tail) recallTails.delete(path);
 				}
 				const header = [
 					`[obs_recall id=${params.id} offset=${offset} next_offset=${chunk.nextOffset} eof=${chunk.eof}]`,
