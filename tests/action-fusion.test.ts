@@ -5,11 +5,12 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
 	type BashOperations,
 	createBashToolDefinition,
 	type ExtensionAPI,
+	initTheme,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -100,6 +101,11 @@ afterEach(async () => {
 });
 
 describe("action fusion then_run", () => {
+	beforeAll(() => {
+		// Pi's write renderer uses the global theme for syntax highlighting.
+		initTheme("dark");
+	});
+
 	it("adds an optional command and timeout object to edit and write", () => {
 		const { edit, write } = loadFusedTools();
 
