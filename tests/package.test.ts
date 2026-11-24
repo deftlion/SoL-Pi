@@ -71,12 +71,37 @@ function packedFiles(): string[] {
 		shell: process.platform === "win32",
 	});
 	if (result.status !== 0) throw new Error(result.stderr || result.stdout);
-	const parsed = JSON.parse(result.stdout) as
-		| PackReport[]
-		| Record<string, PackReport>;
-	const report = Array.isArray(parsed) ? parsed : Object.values(parsed);
-	return report[0]?.files.map((file) => file.path) ?? [];
+	return parsePackedFiles(result.stdout);
 }
+
+function parsePackedFiles(stdout: string): string[] {
+	// npm 12 keys reports by package name; older versions return an array.
+	const reports = Object.values(JSON.parse(stdout) ?? {}) as PackReport[];
+	const [report] = reports;
+	if (
+		reports.length !== 1 ||
+		!Array.isArray(report?.files) ||
+		report.files.some((file) => typeof file?.path !== "string")
+	) {
+		throw new Error(
+			"Expected npm pack --json to report one package with a file list",
+		);
+	}
+	return report.files.map((file) => file.path);
+}
+
+it.each([
+	["array", '[{"files":[{"path":"src/sol-pi/index.ts"}]}]'],
+	["package-keyed", '{"sol-pi":{"files":[{"path":"src/sol-pi/index.ts"}]}}'],
+])("reads the %s npm pack report", (_shape, stdout) => {
+	expect(parsePackedFiles(stdout)).toEqual(["src/sol-pi/index.ts"]);
+});
+
+it("rejects an npm pack report without a file list", () => {
+	expect(() => parsePackedFiles('{"sol-pi":{}}')).toThrow(
+		"Expected npm pack --json to report one package with a file list",
+	);
+});
 
 describe("published package", () => {
 	let files: string[];
